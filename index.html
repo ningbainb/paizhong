@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0a0c10" />
+  <title>牌宗 · 五宗归一</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/game.css" />
+  <link rel="stylesheet" href="css/clean.css" />
+  <link rel="stylesheet" href="css/shell.css" />
+  <link rel="stylesheet" href="css/feel.css" />
+</head>
+<body>
+  <div class="bg-layer" aria-hidden="true">
+    <div class="bg-glow bg-glow-a"></div>
+    <div class="bg-glow bg-glow-b"></div>
+    <div class="bg-grid"></div>
+    <div class="bg-noise"></div>
+  </div>
+  <!-- 全屏外框装饰 -->
+  <div class="shell-outer-frame" aria-hidden="true"></div>
+
+  <div id="app">
+    <!-- 内容区内框（角饰） -->
+    <div class="shell-content-frame" aria-hidden="true"></div>
+    <!-- 顶栏（桌面） -->
+    <header class="app-header" id="app-header">
+      <div class="brand">
+        <span class="brand-seal">牌</span>
+        <div>
+          <div class="brand-name">牌宗</div>
+          <div class="brand-tag">五宗归一 · 桌面版</div>
+        </div>
+      </div>
+      <nav class="header-nav">
+        <button class="nav-link" data-nav="weekly" type="button">周常</button>
+        <button class="nav-link" data-nav="rank" type="button">排行</button>
+        <button class="nav-link" data-nav="codex" type="button">图鉴</button>
+        <button class="nav-link" data-nav="achieve" type="button">成就</button>
+        <button class="nav-link" data-nav="meta" type="button">阅历阁</button>
+        <button class="nav-link" id="btn-sfx-toggle" type="button">音效开</button>
+        <button class="nav-link" data-nav="help" type="button">玩法</button>
+      </nav>
+    </header>
+
+    <!-- 标题 -->
+    <section id="screen-title" class="screen active screen-title">
+      <div class="title-bg-art" aria-hidden="true"></div>
+      <div class="title-vignette" aria-hidden="true"></div>
+      <div class="title-layout">
+        <div class="title-hero">
+          <div class="title-kicker">
+            <span class="title-kicker-line" aria-hidden="true"></span>
+            <span>天下牌术 · 分而为五 · 八境归一</span>
+            <span class="title-kicker-line" aria-hidden="true"></span>
+          </div>
+
+          <div class="title-brand-row">
+            <div class="title-seal title-seal-img" role="img" aria-label="牌宗印"></div>
+            <div class="title-brand-text">
+              <h1 class="title-main">牌宗</h1>
+              <p class="title-sub">斗地主式压牌 · 牌理×气破境 · 奇牌构筑长线</p>
+            </div>
+          </div>
+
+          <div class="title-stats" role="group" aria-label="生涯数据">
+            <div class="stat-card"><span>论道</span><strong id="stat-games">0</strong></div>
+            <div class="stat-card"><span>阅历</span><strong id="stat-yueli">0</strong></div>
+            <div class="stat-card"><span>最高分</span><strong id="stat-best">0</strong></div>
+            <div class="stat-card"><span>无尽层</span><strong id="stat-endless">0</strong></div>
+          </div>
+
+          <div class="title-cta-block">
+            <button class="btn btn-primary btn-lg title-cta-main" id="btn-start" type="button">
+              <span class="cta-label">开始论道</span>
+              <span class="cta-hint">八境正传 · 常道推荐</span>
+            </button>
+            <button class="btn btn-ghost title-cta-resume" id="btn-retry-last" style="display:none" type="button">再开上一局</button>
+          </div>
+
+          <div class="title-modes" role="group" aria-label="其他模式">
+            <button class="title-mode-card" id="btn-endless" type="button">
+              <span class="mode-ico" style="background-image:url('assets/diff/endless.jpg')"></span>
+              <span class="mode-text">
+                <strong>无尽论道</strong>
+                <em>词条叠层 · 冲层里程碑</em>
+              </span>
+            </button>
+            <button class="title-mode-card" id="btn-daily" type="button">
+              <span class="mode-ico" style="background-image:url('assets/ui/daily_banner.jpg')"></span>
+              <span class="mode-text">
+                <strong>每日挑战</strong>
+                <em>今日一局 · 连胜奖励</em>
+              </span>
+            </button>
+            <button class="title-mode-card" id="btn-weekly" type="button">
+              <span class="mode-ico" style="background-image:url('assets/ui/weekly_banner.jpg')"></span>
+              <span class="mode-text">
+                <strong>本周禁宗</strong>
+                <em>禁宗轮换 · 周常试炼</em>
+              </span>
+            </button>
+          </div>
+
+          <div class="title-links">
+            <div class="title-link-group">
+              <span class="link-group-label">收藏</span>
+              <button class="title-link" id="btn-codex" type="button">奇牌图鉴</button>
+              <button class="title-link" id="btn-achieve" type="button">成就</button>
+              <button class="title-link" id="btn-meta" type="button">阅历阁</button>
+            </div>
+            <div class="title-link-group">
+              <span class="link-group-label">更多</span>
+              <button class="title-link" id="btn-rank" type="button">排行榜</button>
+              <button class="title-link" id="btn-import" type="button">导入构筑</button>
+              <button class="title-link" id="btn-help" type="button">玩法说明</button>
+              <button class="title-link is-accent" id="btn-tutorial" type="button">新手引导</button>
+            </div>
+          </div>
+
+          <p class="title-quote">五宗归一，方成牌宗</p>
+        </div>
+
+        <aside class="title-side">
+          <div class="title-side-panel">
+            <div class="side-panel-head">
+              <h3>论道路径</h3>
+              <span class="side-panel-tag">长线</span>
+            </div>
+            <ul class="path-list">
+              <li>
+                <b>八境正传</b>
+                <span>明局 · 暗局 · 宗主</span>
+              </li>
+              <li>
+                <b>藏经构筑</b>
+                <span>奇牌 · 心法 · 锦囊</span>
+              </li>
+              <li>
+                <b>无尽冲层</b>
+                <span>词条叠层 · 里程碑</span>
+              </li>
+              <li>
+                <b>日常周常</b>
+                <span>每日一局 · 禁宗轮换</span>
+              </li>
+            </ul>
+
+            <div class="side-panel-head side-panel-head-sub">
+              <h3>五宗徽记</h3>
+            </div>
+            <div class="sect-icons" id="sect-icons">
+              <div class="sect-icon-item" data-sect="压牌宗" title="压牌宗"><span class="sect-icon" style="background-image:url('assets/sects/yapai.jpg')"></span><em>压牌</em></div>
+              <div class="sect-icon-item" data-sect="变数堂" title="变数堂"><span class="sect-icon" style="background-image:url('assets/sects/bianshu.jpg')"></span><em>变数</em></div>
+              <div class="sect-icon-item" data-sect="天命阁" title="天命阁"><span class="sect-icon" style="background-image:url('assets/sects/tianming.jpg')"></span><em>天命</em></div>
+              <div class="sect-icon-item" data-sect="千机门" title="千机门"><span class="sect-icon" style="background-image:url('assets/sects/qianji.jpg')"></span><em>千机</em></div>
+              <div class="sect-icon-item" data-sect="谍影盟" title="谍影盟"><span class="sect-icon" style="background-image:url('assets/sects/dieying.jpg')"></span><em>谍影</em></div>
+            </div>
+
+            <div class="side-progress" id="title-progress-panel">
+              <div class="side-progress-label">你的进度</div>
+              <div class="side-tip" id="title-progress-tip">通关第八境后进入无尽论道。</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 模式/难度选择 -->
+    <section id="screen-mode" class="screen screen-has-bg screen-mode">
+      <div class="screen-bg-art mode-bg" aria-hidden="true"></div>
+      <div class="content-shell">
+        <div class="section-head">
+          <div>
+            <div class="section-title">选择模式与难度</div>
+            <p class="section-desc" id="mode-desc">正传论道：八境破关后进入无尽</p>
+          </div>
+        </div>
+        <div class="mode-grid" id="mode-grid"></div>
+        <div class="btn-row end">
+          <button class="btn btn-ghost" id="btn-mode-back">返回</button>
+          <button class="btn btn-primary" id="btn-mode-next">选择牌客</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 图鉴 -->
+    <section id="screen-codex" class="screen screen-has-bg screen-codex">
+      <div class="screen-bg-art codex-bg" aria-hidden="true"></div>
+      <div class="content-shell wide codex-shell">
+        <div class="section-head codex-head">
+          <div>
+            <div class="section-title">奇牌图鉴</div>
+            <p class="section-desc" id="codex-desc">已见 0 / 0</p>
+          </div>
+          <button class="btn btn-ghost" id="btn-codex-back">返回</button>
+        </div>
+        <div class="codex-toolbar">
+          <div class="codex-progress" id="codex-progress">
+            <div class="codex-progress-bar"><i id="codex-progress-fill"></i></div>
+            <div class="codex-rarity-stats" id="codex-rarity-stats"></div>
+          </div>
+          <div class="codex-tabs" id="codex-tabs"></div>
+        </div>
+        <div class="codex-scroll">
+          <div class="codex-grid" id="codex-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 成就 -->
+    <section id="screen-achieve" class="screen">
+      <div class="content-shell wide">
+        <div class="section-head">
+          <div>
+            <div class="section-title">成就</div>
+            <p class="section-desc" id="achieve-desc">0 / 0</p>
+          </div>
+          <button class="btn btn-ghost" id="btn-achieve-back">返回</button>
+        </div>
+        <div class="achieve-tabs" id="achieve-tabs"></div>
+        <div class="achieve-grid" id="achieve-grid"></div>
+      </div>
+    </section>
+
+    <!-- 周常 -->
+    <section id="screen-weekly" class="screen">
+      <div class="content-shell">
+        <div class="section-head">
+          <div>
+            <div class="section-title">本周禁宗</div>
+            <p class="section-desc" id="weekly-key">—</p>
+          </div>
+          <button class="btn btn-ghost" id="btn-weekly-back">返回</button>
+        </div>
+        <div class="panel glass" id="weekly-panel">
+          <h3 id="weekly-name" class="gold-text" style="font-family:var(--display);font-size:22px;margin-bottom:10px">—</h3>
+          <p id="weekly-desc" style="color:var(--muted);line-height:1.7;margin-bottom:16px">—</p>
+          <div id="weekly-status" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
+          <button class="btn btn-primary" id="btn-weekly-start">挑战本周</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 排行榜 -->
+    <section id="screen-rank" class="screen screen-has-bg screen-rank">
+      <div class="screen-bg-art rank-bg" aria-hidden="true"></div>
+      <div class="content-shell wide">
+        <div class="section-head">
+          <div>
+            <div class="section-title">本地排行</div>
+            <p class="section-desc">纪录保存在本机 · 可复制构筑分享码</p>
+          </div>
+          <button class="btn btn-ghost" id="btn-rank-back">返回</button>
+        </div>
+        <div class="shop-grid" style="grid-template-columns:1fr 1fr">
+          <div class="panel glass">
+            <h3 style="color:var(--gold-light);margin-bottom:12px">荣誉墙</h3>
+            <div id="rank-best" class="help-content"></div>
+          </div>
+          <div class="panel glass">
+            <h3 style="color:var(--gold-light);margin-bottom:12px">最近论道</h3>
+            <div id="rank-history" class="help-content" style="max-height:420px;overflow:auto"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 阅历阁 -->
+    <section id="screen-meta" class="screen screen-has-bg screen-meta">
+      <div class="screen-bg-art meta-bg" aria-hidden="true"></div>
+      <div class="content-shell wide meta-shell">
+        <div class="section-head meta-head">
+          <div>
+            <div class="section-title">阅历阁</div>
+            <p class="section-desc">用阅历购置<strong>永久成长</strong>：卡池、开局胚、收益与便利 · 不破坏单局公平的基础胚</p>
+          </div>
+          <button class="btn btn-ghost" id="btn-meta-back">返回</button>
+        </div>
+
+        <div class="meta-summary" id="meta-summary"></div>
+        <div class="meta-insight" id="meta-insight"></div>
+        <div class="meta-tabs" id="meta-tabs"></div>
+        <div class="meta-scroll">
+          <div class="meta-shop-list" id="meta-shop-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 玩法说明 -->
+    <section id="screen-help" class="screen screen-has-bg screen-help">
+      <div class="screen-bg-art help-bg" aria-hidden="true"></div>
+      <div class="content-shell">
+        <div class="section-head">
+          <div>
+            <div class="section-title">玩法说明</div>
+            <p class="section-desc">前 3 分钟会玩 · 牌理×气为爽点 · 含完整美术资源</p>
+          </div>
+        </div>
+        <div class="hand-type-gallery" id="hand-type-gallery"></div>
+        <div class="help-grid">
+          <div class="panel glass help-content">
+            <h3>一句话</h3>
+            <p>像斗地主一样出牌压过对手。每次出牌按 <strong>牌理 × 气 × 宗势</strong> 得分，分数达到门槛即通关。</p>
+            <h3>牌型与气倍率</h3>
+            <p>单张×1.0 · 对子×1.4 · 三张×1.8 · 三带一×2.0 · 三带二×2.15<br>
+            顺子×2.2 · 连对×2.6 · 飞机×3.0 · 炸弹×4.2 · 火箭×6.5</p>
+            <h3>三种操作</h3>
+            <p><strong>出牌</strong>：合法牌型，同型压制；炸弹/火箭可越级。<br>
+            <strong>过牌</strong>：交出主动权，小幅蓄气；连续过牌叠心魔。<br>
+            <strong>机关</strong>：每回合最多 1 张，凑牌、控制、翻盘。</p>
+            <h3>选牌技巧</h3>
+            <p>点一张自动成组；再点同组可<strong>轮换</strong>其它方案。<br>
+            Shift+点手动加减单张；双击可直接出牌。<br>
+            绿色出牌按钮 = 这一手能破境。</p>
+            <h3>连压 · 背水 · 巧压</h3>
+            <p><strong>连压</strong>：连续压过守关者时，跟牌额外加气，夺回主动权气脉更强。<br>
+            <strong>背水/逆风</strong>：敌方进度高或你落后时获得气加成。<br>
+            <strong>巧压</strong>：刚好压过（高 1～3 阶）加气；新牌型首见、开局连型也有小奖。<br>
+            <strong>破境奖励</strong>：干净破境、牌型多样、速破可额外顿悟。</p>
+            <h3>快捷键</h3>
+            <p>空格/回车 出牌 · P 过牌 · H 提示 · D 摸牌 · Z 宗势 · Esc 清空选牌</p>
+          </div>
+          <div class="panel glass help-content">
+            <h3>天命与同花</h3>
+            <p>本局随机天命花色，该花色牌理+2。同花出牌牌理+20%。连续递增最高牌触发「顺势」气+0.4。</p>
+            <h3>心魔与守关者</h3>
+            <p>心魔满会冻结手牌或抬高门槛。暗局/宗主局守关者带起势。拖回合过久守关者涨势加剧。</p>
+            <h3>奇牌与藏经阁</h3>
+            <p>奇牌是装备型被动。通关后在藏经阁用顿悟升级心法、购买奇牌与锦囊。</p>
+            <h3>论道结构</h3>
+            <p>八境，每境：明局 → 暗局 → 宗主局。通关第八境后进入<strong>无尽论道</strong>（词条叠层）。</p>
+            <h3>长线系统</h3>
+            <p>阅历解锁牌客与卡池；成就奖励阅历；每日/周常挑战；四档难度拉长目标。</p>
+            <h3>新手引导</h3>
+            <p>首次进入会自动弹出入门教学。也可随时在标题页点<strong>「新手引导」</strong>重看：破境目标 → 选牌成组 → 出牌得分 → 压牌过牌 → 机关锦囊 → 藏经阁 → 长线成长。</p>
+          </div>
+        </div>
+        <div class="btn-row end">
+          <button class="btn btn-secondary" id="btn-help-tutorial" type="button">重开新手引导</button>
+          <button class="btn btn-primary" id="btn-help-back">返回</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 选角色 -->
+    <section id="screen-char" class="screen screen-has-bg screen-char">
+      <div class="screen-bg-art char-bg" aria-hidden="true"></div>
+      <div class="content-shell wide">
+        <div class="section-head">
+          <div>
+            <div class="section-title">选择牌客</div>
+            <p class="section-desc">每位牌客带来稳定绝活，主流派清晰、兼具泛用</p>
+          </div>
+        </div>
+        <div class="char-grid" id="char-grid"></div>
+        <div class="btn-row end sticky-actions">
+          <button class="btn btn-ghost" id="btn-char-back">返回</button>
+          <button class="btn btn-primary" id="btn-char-confirm">确认出战</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 论道地图 -->
+    <section id="screen-map" class="screen screen-has-bg screen-map">
+      <div class="screen-bg-art map-bg" aria-hidden="true"></div>
+      <div class="content-shell wide">
+        <div class="section-head">
+          <div>
+            <div class="section-title">论道路径</div>
+            <p class="section-desc" id="map-char">—</p>
+            <p class="section-desc map-qipai" id="map-qipai">奇牌：无</p>
+          </div>
+        </div>
+        <div class="map-path" id="map-path"></div>
+        <div class="btn-row end sticky-actions">
+          <button class="btn btn-ghost" id="btn-map-back">退出</button>
+          <button class="btn btn-primary" id="btn-map-start">进入当前关</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 奇牌选择 -->
+    <section id="screen-qipai" class="screen">
+      <div class="content-shell">
+        <div class="section-head">
+          <div>
+            <div class="section-title" id="qipai-title">选择奇牌</div>
+            <p class="section-desc" id="qipai-desc">奇牌作为本局被动规则，决定流派方向。</p>
+          </div>
+        </div>
+        <div class="qipai-list" id="qipai-list"></div>
+        <div class="btn-row end sticky-actions">
+          <button class="btn btn-ghost" id="btn-skip-qipai">跳过</button>
+          <button class="btn btn-primary" id="btn-qipai-confirm">确认选择</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 战斗 · 桌面牌桌 -->
+    <section id="screen-battle" class="screen screen-battle">
+      <div class="battle-desktop">
+        <!-- 左侧信息 -->
+        <aside class="battle-side left panel glass">
+          <div class="side-block">
+            <div class="side-kicker">当前关卡</div>
+            <div class="side-title" id="battle-stage">第一境·明局</div>
+            <div class="side-sub" id="battle-char">沈惊寒</div>
+          </div>
+          <div class="side-block">
+            <div class="side-kicker">破境竞速</div>
+            <p class="race-desc">分数先到门槛者胜，不必出完手牌</p>
+            <div class="score-race" id="score-race">
+              <div class="race-row is-player">
+                <div class="race-head">
+                  <span class="race-who">我方</span>
+                  <span class="score-num" id="score-player">0 / 260</span>
+                </div>
+                <div class="bar-track" aria-hidden="true">
+                  <div class="bar-fill player" id="bar-player" style="width:0%"></div>
+                </div>
+                <div class="race-tip" id="race-tip-player">冲分破境</div>
+              </div>
+              <div class="race-vs" aria-hidden="true">对阵</div>
+              <div class="race-row is-enemy">
+                <div class="race-head">
+                  <span class="race-who">守关者</span>
+                  <span class="score-num" id="score-enemy">0 / 220</span>
+                </div>
+                <div class="bar-track" aria-hidden="true">
+                  <div class="bar-fill enemy" id="bar-enemy" style="width:0%"></div>
+                </div>
+                <div class="race-tip" id="race-tip-enemy">阻止其破境</div>
+              </div>
+            </div>
+          </div>
+          <div class="side-block">
+            <div class="side-kicker">本局资源</div>
+            <div class="resource-grid" id="resource-grid"></div>
+            <div class="battle-info-row" id="battle-chips"></div>
+            <button class="btn btn-secondary btn-small btn-block" id="btn-zongshi" style="margin-top:8px" type="button">宗势令</button>
+          </div>
+          <div class="side-block grow">
+            <div class="side-kicker">战报</div>
+            <div class="battle-log-panel" id="battle-log"></div>
+          </div>
+          <button class="btn btn-ghost btn-block" id="btn-battle-menu">退出本局</button>
+        </aside>
+
+        <!-- 中央牌桌 -->
+        <main class="battle-table">
+          <div class="table-frame-wrap">
+          <div class="table-felt">
+            <div class="felt-ring"></div>
+            <div class="enemy-area">
+              <div class="enemy-header-row">
+                <div class="enemy-portrait" id="enemy-portrait" title="守关者"></div>
+                <div class="enemy-label">
+                  <span class="enemy-name">守关者</span>
+                  <span id="enemy-count">17 张</span>
+                </div>
+              </div>
+              <div class="enemy-cards" id="enemy-cards"></div>
+            </div>
+
+            <div class="table-area">
+              <div class="last-play" id="last-play"></div>
+              <div class="last-play-info" id="last-play-info">准备出牌</div>
+              <div class="battle-phase" id="battle-phase">选择牌型打出</div>
+            </div>
+
+            <div class="util-tray" id="util-tray">
+              <div class="util-section" id="jiguan-section">
+                <div class="util-head">
+                  <div class="util-title-wrap">
+                    <span class="util-title">机关</span>
+                    <span class="util-sub">本回合技能 · 点选发动</span>
+                  </div>
+                  <span class="util-meta" id="jiguan-meta">—</span>
+                </div>
+                <div class="jiguan-bar" id="jiguan-bar"></div>
+              </div>
+              <div class="util-section" id="jinnang-section" hidden>
+                <div class="util-head">
+                  <div class="util-title-wrap">
+                    <span class="util-title">锦囊</span>
+                    <span class="util-sub">一次性道具</span>
+                  </div>
+                </div>
+                <div class="jinnang-bar" id="jinnang-bar"></div>
+              </div>
+            </div>
+          </div>
+          </div><!-- /.table-frame-wrap -->
+
+          <div class="hand-area" id="hand-area">
+            <div class="hand-toolbar">
+              <span id="hand-count-label">手牌 17 张</span>
+              <span class="hand-hint" id="hand-hint"></span>
+              <span class="hand-tools">
+                <button class="btn btn-ghost btn-small" id="btn-peek" style="display:none">天机测</button>
+                <button class="btn btn-ghost btn-small btn-with-icon" id="btn-hint"><span class="btn-ico" id="ico-hint"></span>提示</button>
+              </span>
+            </div>
+            <div class="hand-cards" id="hand-cards"></div>
+            <div class="action-bar" id="action-bar">
+              <button class="btn btn-ghost btn-with-icon" id="btn-draw" title="消耗境界底牌摸1张">摸牌</button>
+              <button class="btn btn-secondary btn-with-icon" id="btn-pass"><span class="btn-ico" id="ico-pass"></span>过牌</button>
+              <button class="btn btn-primary btn-with-icon" id="btn-play"><span class="btn-ico" id="ico-play"></span>出牌</button>
+            </div>
+          </div>
+        </main>
+
+        <!-- 右侧构筑 -->
+        <aside class="battle-side right panel glass" id="battle-build">
+          <div class="side-block">
+            <div class="side-kicker">本局构筑</div>
+            <div class="build-list" id="build-qipai">暂无奇牌</div>
+          </div>
+          <div class="side-block">
+            <div class="side-kicker">快捷键</div>
+            <div class="hotkeys">
+              <div><kbd>Space</kbd> 提示/出牌</div>
+              <div><kbd>Tab</kbd> 轮换方案</div>
+              <div><kbd>D</kbd> 摸牌</div>
+              <div><kbd>P</kbd> 过牌</div>
+              <div><kbd>H</kbd> 提示</div>
+              <div><kbd>Z</kbd> 宗势令</div>
+              <div><kbd>Esc</kbd> 取消选择</div>
+            </div>
+            <div class="side-tip" style="margin-top:10px;font-size:11px;line-height:1.5;color:var(--muted)">
+              未选牌时空格=提示；已选可出则出牌。Tab 轮换同牌方案。
+            </div>
+          </div>
+          <div class="side-block tip-box">
+            同花 +20% 牌理 · 天命花色每张 +2<br>
+            炸弹可压任意非火箭牌型
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 结算 -->
+    <section id="screen-result" class="screen screen-has-bg screen-result">
+      <div class="screen-bg-art result-bg" aria-hidden="true"></div>
+      <div class="content-shell narrow result-shell">
+        <div class="section-title" id="result-title">破境成功</div>
+        <div class="result-label" id="result-label">—</div>
+        <div class="result-score" id="result-score">0</div>
+        <div class="panel glass">
+          <div class="panel-label">关键链路 / 最后一手</div>
+          <div class="breakdown-list" id="result-breakdown"></div>
+          <div class="result-build" id="result-qipai"></div>
+        </div>
+        <div class="panel glass" style="margin-top:12px">
+          <div class="panel-label">构筑分享码</div>
+          <div id="result-share" class="share-code"></div>
+          <button class="btn btn-secondary btn-small" id="btn-copy-share" style="margin-top:8px">复制分享码</button>
+        </div>
+        <div class="btn-row end">
+          <button class="btn btn-primary" id="btn-result-next">进入藏经阁</button>
+          <button class="btn btn-secondary" id="btn-result-shop">藏经阁</button>
+          <button class="btn btn-primary" id="btn-result-retry">再来一局</button>
+          <button class="btn btn-ghost" id="btn-result-home">回标题</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 藏经阁 -->
+    <section id="screen-shop" class="screen screen-has-bg screen-shop">
+      <div class="screen-bg-art shop-bg" aria-hidden="true"></div>
+      <div class="content-shell wide">
+        <div class="section-head">
+          <div>
+            <div class="section-title">藏经阁</div>
+            <p class="section-desc">消耗顿悟强化构筑 · <span id="shop-dunwu" class="gold-text">顿悟 0</span></p>
+          </div>
+          <button class="btn btn-primary" id="btn-shop-leave">继续论道</button>
+        </div>
+        <div class="shop-grid">
+          <div class="shop-section panel glass">
+            <h3>心法升级</h3>
+            <div class="shop-items" id="shop-xinfa"></div>
+          </div>
+          <div class="shop-section panel glass">
+            <h3>奇牌购置</h3>
+            <div class="shop-items" id="shop-qipai"></div>
+          </div>
+          <div class="shop-section panel glass">
+            <h3>锦囊 <button class="btn btn-secondary btn-small" id="btn-buy-jinnang">随机 20顿悟</button></h3>
+            <div class="shop-items" id="shop-owned-jinnang-placeholder">
+              <div class="empty-hint">购买后在战斗中使用</div>
+            </div>
+            <h3 style="margin-top:16px">已有奇牌</h3>
+            <div class="shop-items" id="shop-owned"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal glass">
+        <h3 id="modal-title">选择</h3>
+        <div id="modal-body"></div>
+        <div class="modal-options" id="modal-options"></div>
+        <button class="btn btn-ghost btn-block" id="modal-cancel">取消</button>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- 机关/锦囊发动演出 -->
+    <div class="cast-fx" id="cast-fx" aria-live="polite">
+      <div class="cast-fx-ring" aria-hidden="true"></div>
+      <div class="cast-fx-card">
+        <div class="cast-fx-icon" id="cast-fx-icon"></div>
+        <div class="cast-fx-kind" id="cast-fx-kind">机关</div>
+        <div class="cast-fx-name" id="cast-fx-name">—</div>
+        <div class="cast-fx-desc" id="cast-fx-desc">—</div>
+        <div class="cast-fx-effect" id="cast-fx-effect">—</div>
+        <div class="cast-fx-extra" id="cast-fx-extra"></div>
+      </div>
+    </div>
+
+    <!-- 成就解锁弹层 -->
+    <div class="achieve-popup" id="achieve-popup" aria-live="polite">
+      <div class="achieve-popup-card">
+        <div class="achieve-popup-badge" id="achieve-popup-badge"></div>
+        <div class="achieve-popup-label">成就解锁</div>
+        <div class="achieve-popup-name" id="achieve-popup-name">—</div>
+        <div class="achieve-popup-desc" id="achieve-popup-desc">—</div>
+        <div class="achieve-popup-reward" id="achieve-popup-reward">阅历 +0</div>
+      </div>
+    </div>
+
+    <!-- 破境全屏演出 -->
+    <div class="fx-overlay" id="fx-overlay">
+      <div class="fx-art" aria-hidden="true"></div>
+      <div class="fx-burst"></div>
+      <div class="fx-title" id="fx-title">破境</div>
+      <div class="fx-sub" id="fx-sub">论道有成</div>
+    </div>
+  </div>
+
+  <!-- 图鉴详情：挂 body，避免被 #app 裁切 -->
+  <div class="codex-detail-overlay" id="codex-detail-overlay">
+    <div class="codex-detail-card" id="codex-detail-card">
+      <div class="codex-detail-visual">
+        <div class="codex-detail-frame" id="codex-detail-frame"></div>
+        <div class="codex-detail-art" id="codex-detail-art"></div>
+      </div>
+      <div class="codex-detail-body">
+        <div class="codex-detail-rarity" id="codex-detail-rarity"></div>
+        <div class="codex-detail-name" id="codex-detail-name"></div>
+        <div class="codex-detail-desc" id="codex-detail-desc"></div>
+        <div class="codex-detail-meta" id="codex-detail-meta"></div>
+      </div>
+      <button class="btn btn-primary btn-block" id="btn-codex-detail-close" type="button">关闭</button>
+    </div>
+  </div>
+
+  <!-- 新手引导：挂在 body 下，避免 #app overflow 裁切 / 堆叠上下文导致定位跑偏 -->
+  <div class="guide-overlay" id="guide-overlay" aria-modal="true" role="dialog" aria-labelledby="guide-title">
+    <div class="guide-dim" id="guide-dim"></div>
+    <div class="guide-hole" id="guide-hole" aria-hidden="true"></div>
+    <div class="guide-card" id="guide-card">
+      <div class="guide-card-shine" aria-hidden="true"></div>
+      <div class="guide-card-inner">
+        <div class="guide-card-head">
+          <div class="guide-icon-wrap">
+            <div class="guide-icon" id="guide-icon"></div>
+            <span class="guide-badge" id="guide-badge">入门</span>
+          </div>
+          <div class="guide-head-text">
+            <div class="guide-kicker">
+              <span class="guide-seal-mini" id="guide-seal-mini" aria-hidden="true"></span>
+              <span class="guide-kicker-label">牌宗 · 入门指引</span>
+            </div>
+            <div class="guide-title" id="guide-title">欢迎</div>
+            <div class="guide-progress-row">
+              <div class="guide-progress" id="guide-progress">1 / 9</div>
+              <div class="guide-dots" id="guide-dots" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
+        <div class="guide-divider" id="guide-divider" aria-hidden="true"></div>
+        <div class="guide-body" id="guide-body"></div>
+        <div class="guide-hint" id="guide-hint" style="display:none">
+          <span class="guide-hint-ico" aria-hidden="true">✦</span>
+          <span class="guide-hint-text" id="guide-hint-text"></span>
+        </div>
+        <div class="guide-actions">
+          <button type="button" class="btn btn-ghost btn-small guide-btn-skip" id="guide-skip">跳过教学</button>
+          <button type="button" class="btn btn-primary btn-small guide-btn-next" id="guide-next">下一步</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/assets.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/share.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>

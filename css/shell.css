@@ -1,0 +1,302 @@
+/**
+ * 大框架 UI 壳层 — 全屏背景 / 外框 / 牌桌木框 / 胜负大插画
+ */
+
+/* ===== 全局壳背景 ===== */
+body {
+  background: #07090d;
+}
+.bg-layer {
+  background:
+    linear-gradient(180deg, rgba(7, 9, 13, 0.55), rgba(7, 9, 13, 0.75)),
+    url('../assets/shell/app_bg.jpg') center / cover no-repeat !important;
+}
+.bg-glow,
+.bg-grid {
+  opacity: 0.2 !important;
+}
+.bg-noise {
+  opacity: 0.03 !important;
+}
+
+/* 全屏金漆外框（压在最外层，中间镂空感） */
+.shell-outer-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: url('../assets/shell/outer_frame.jpg') center / cover no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.42;
+  /* 中间挖空，避免糊住内容 */
+  -webkit-mask-image: radial-gradient(ellipse 72% 68% at 50% 50%, transparent 55%, black 78%);
+  mask-image: radial-gradient(ellipse 72% 68% at 50% 50%, transparent 55%, black 78%);
+}
+
+#app {
+  position: relative;
+  max-width: 1680px;
+  box-shadow:
+    0 0 0 1px rgba(212, 175, 55, 0.14),
+    0 0 100px rgba(0, 0, 0, 0.6);
+  background: rgba(6, 8, 12, 0.35);
+  z-index: 1;
+}
+
+/* 内容区内角框 */
+.shell-content-frame {
+  position: absolute;
+  inset: 52px 8px 8px;
+  z-index: 2;
+  pointer-events: none;
+  background: url('../assets/shell/content_frame.jpg') center / 100% 100% no-repeat;
+  opacity: 0.28;
+  mix-blend-mode: soft-light;
+  -webkit-mask-image: radial-gradient(ellipse 85% 82% at 50% 50%, transparent 62%, black 88%);
+  mask-image: radial-gradient(ellipse 85% 82% at 50% 50%, transparent 62%, black 88%);
+}
+
+/* ===== 顶栏：实木金漆条 ===== */
+.app-header {
+  height: 58px !important;
+  padding: 0 32px !important;
+  border-bottom: none !important;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.55)),
+    url('../assets/shell/header.jpg') center / cover no-repeat !important;
+  box-shadow:
+    0 1px 0 rgba(212, 175, 55, 0.2),
+    0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: none !important;
+}
+.app-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.45), transparent);
+}
+.brand-name {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+.nav-link {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(212, 175, 55, 0.12) !important;
+}
+
+/* ===== 标题大堂 ===== */
+#screen-title .title-bg-art {
+  background:
+    linear-gradient(90deg, rgba(7, 9, 13, 0.82) 0%, rgba(7, 9, 13, 0.45) 48%, rgba(7, 9, 13, 0.78) 100%),
+    linear-gradient(180deg, rgba(7, 9, 13, 0.15) 0%, rgba(7, 9, 13, 0.88) 100%),
+    url('../assets/shell/title_hall.jpg') center / cover no-repeat !important;
+}
+
+/* ===== 战斗大场景 ===== */
+#screen-battle {
+  position: relative;
+}
+#screen-battle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(5, 8, 12, 0.55), rgba(5, 8, 12, 0.72)),
+    url('../assets/shell/battle_bg.jpg') center / cover no-repeat;
+}
+.battle-desktop {
+  position: relative;
+  z-index: 1;
+}
+
+/* 侧栏：大块材质而非纯色玻璃 */
+.battle-side {
+  background:
+    linear-gradient(180deg, rgba(8, 10, 16, 0.72), rgba(8, 10, 16, 0.88)),
+    url('../assets/shell/sidebar.jpg') center / cover no-repeat !important;
+  border: 1px solid rgba(212, 175, 55, 0.22) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 12px 32px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
+}
+
+/* 手牌托盘：底部大条材质 */
+.hand-area {
+  background:
+    linear-gradient(180deg, rgba(8, 10, 16, 0.55), rgba(6, 8, 12, 0.9)),
+    url('../assets/shell/hand_tray.jpg') center top / cover no-repeat !important;
+  border: 1px solid rgba(212, 175, 55, 0.28) !important;
+  box-shadow:
+    0 -10px 36px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 230, 160, 0.08) !important;
+}
+.hand-area::before {
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent) !important;
+}
+
+/* 牌桌木框 + 绿毡 */
+.table-frame-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  border-radius: 28px;
+  padding: 14px;
+  background:
+    linear-gradient(160deg, rgba(20, 14, 8, 0.35), rgba(8, 6, 4, 0.55)),
+    url('../assets/shell/table_frame.jpg') center / cover no-repeat;
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(212, 175, 55, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+.table-felt {
+  flex: 1 !important;
+  min-height: 0 !important;
+  border-radius: 20px !important;
+  border: 2px solid rgba(42, 31, 16, 0.9) !important;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(10, 40, 30, 0.25), rgba(5, 12, 10, 0.45) 70%),
+    url('../assets/ui/table_felt.jpg') center / cover no-repeat !important;
+  box-shadow:
+    inset 0 0 0 2px rgba(212, 175, 55, 0.18),
+    inset 0 0 70px rgba(0, 0, 0, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* 胜负全屏大插画 — 结算屏 */
+#screen-result .result-bg {
+  background-size: cover !important;
+  background-position: center !important;
+  filter: none !important;
+}
+#screen-result.won .result-bg {
+  background-image:
+    linear-gradient(180deg, rgba(7, 9, 13, 0.45), rgba(7, 9, 13, 0.82)),
+    url('../assets/shell/victory_full.jpg') !important;
+}
+#screen-result.lost .result-bg {
+  background-image:
+    linear-gradient(180deg, rgba(7, 9, 13, 0.5), rgba(7, 9, 13, 0.88)),
+    url('../assets/shell/defeat_full.jpg') !important;
+}
+#screen-result .result-shell {
+  position: relative;
+  z-index: 1;
+}
+#screen-result .result-shell .panel {
+  background: rgba(8, 10, 16, 0.72) !important;
+}
+
+/* 破境演出全屏大图 */
+.fx-overlay .fx-art {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.65)),
+    url('../assets/shell/victory_full.jpg') center / cover no-repeat !important;
+  opacity: 0.95 !important;
+}
+.fx-overlay.fx-lose .fx-art {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.75)),
+    url('../assets/shell/defeat_full.jpg') center / cover no-repeat !important;
+}
+
+/* ===== 通用内容面板：大块纹理 ===== */
+.panel.glass,
+.glass {
+  background:
+    linear-gradient(165deg, rgba(12, 14, 20, 0.78), rgba(8, 10, 14, 0.9)),
+    url('../assets/shell/panel.jpg') center / cover no-repeat !important;
+  border: 1px solid rgba(212, 175, 55, 0.22) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* 内容壳里的区块也略带材质 */
+.content-shell .panel,
+.mode-card,
+.char-card,
+.map-realm,
+.shop-section.panel,
+.qipai-card {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+}
+
+.mode-card,
+.char-card {
+  background:
+    linear-gradient(165deg, rgba(16, 18, 26, 0.88), rgba(8, 10, 14, 0.94)),
+    url('../assets/shell/panel.jpg') center / cover no-repeat !important;
+}
+
+/* ===== 弹窗大框 ===== */
+.modal.glass,
+.modal {
+  background:
+    linear-gradient(180deg, rgba(10, 12, 18, 0.82), rgba(8, 10, 14, 0.94)),
+    url('../assets/shell/modal.jpg') center / cover no-repeat !important;
+  border: 1px solid rgba(212, 175, 55, 0.35) !important;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.65),
+    inset 0 0 0 1px rgba(212, 175, 55, 0.12) !important;
+}
+
+/* 各功能屏：若已有主题 bg，加深壳层统一感 */
+.screen-has-bg > .screen-bg-art {
+  filter: saturate(0.95) brightness(0.92);
+}
+.screen-has-bg > .screen-bg-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(5, 7, 10, 0.45) 100%);
+  pointer-events: none;
+}
+
+/* 战斗时顶栏更沉 */
+.app-header.battle-mode {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.7)),
+    url('../assets/shell/header.jpg') center / cover no-repeat !important;
+}
+
+/* 响应：窄屏侧栏仍用材质但压缩 */
+/* 操作引导 */
+.action-bar .btn.need-action {
+  outline: 2px solid rgba(212, 175, 55, 0.7);
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.28);
+}
+#btn-draw {
+  min-width: 88px;
+  letter-spacing: 2px;
+}
+
+@media (max-width: 780px) {
+  #app {
+    box-shadow: none;
+  }
+  .shell-outer-frame {
+    opacity: 0.28;
+    -webkit-mask-image: radial-gradient(ellipse 88% 85% at 50% 50%, transparent 60%, black 90%);
+    mask-image: radial-gradient(ellipse 88% 85% at 50% 50%, transparent 60%, black 90%);
+  }
+  .shell-content-frame {
+    display: none;
+  }
+  .table-frame-wrap {
+    padding: 8px;
+    border-radius: 18px;
+  }
+  .battle-side {
+    background:
+      linear-gradient(180deg, rgba(8, 10, 16, 0.85), rgba(8, 10, 16, 0.95)),
+      url('../assets/shell/sidebar.jpg') center / cover no-repeat !important;
+  }
+}

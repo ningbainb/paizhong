@@ -1,0 +1,21 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.idea/
+.vscode/
+*.log
+
+# Local test / temp
+js/_*.js
+js/_t*.js
+js/_pt.js
+js/_audit*.js
+js/_cfix*.js
+js/_meta*.js
+js/_run*.js
+js/_tut*.js
+
+# Optional large docs (keep game playable)
+# *.pdf
