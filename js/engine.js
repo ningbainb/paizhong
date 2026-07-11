@@ -1068,7 +1068,7 @@ function aiSelectAlgorithms(ctx, board) {
  * 集成：多算法投票；平票时用 rush/hybrid 破境优先
  */
 function aiEnsembleVote(algoIds, plays, handCards, ctx, board) {
-  const votes = new Map(); // key -> { play, w, names }
+  const votes = new Map();
   const weights = {
     rush: board.enemyNearWin || board.strategy === 'finish' ? 1.4 : 1.1,
     control: board.chain >= 2 || board.playerDanger ? 1.35 : 1.0,
@@ -1094,7 +1094,6 @@ function aiEnsembleVote(algoIds, plays, handCards, ctx, board) {
   for (const v of votes.values()) {
     if (!best || v.w > best.w) best = v;
     else if (v.w === best.w) {
-      // 平票：能破境 > 非炸 > 高收益
       const g1 = aiEstimateScore(v.play, ctx);
       const g0 = aiEstimateScore(best.play, ctx);
       if (g1 >= board.needEnemy && g0 < board.needEnemy) best = v;
@@ -1110,7 +1109,239 @@ function aiEnsembleVote(algoIds, plays, handCards, ctx, board) {
 }
 
 /**
- * 对外入口：多算法调度
+ * 出牌后局面估值（越高对守关者越有利）
+ * 考虑：得分、破境、剩余结构、对玩家的压制难度
+ */
+function aiEvalAfterPlay(handCards, play, ctx, board) {
+  const gain = aiEstimateScore(play, ctx);
+  const remain = aiRemainingStructure(handCards, play);
+  const eScore2 = (ctx.enemyScore || 0) + gain;
+  const eTh = Math.max(1, ctx.enemyThreshold || 1000);
+  const pScore = ctx.playerScore || 0;
+  const pTh = Math.max(1, ctx.playerThreshold || 1000);
+  let v = 0;
+
+  // 直接破境
+  if (eScore2 >= eTh) return 1e6 + gain - (aiIsBomb(play) ? 30 : 0);
+
+  const eProg = eScore2 / eTh;
+  const pProg = pScore / pTh;
+  v += gain * 2.2;
+  v += eProg * 120;
+  v -= pProg * 40;
+  v += remain * 2.5;
+
+  // 跟牌后：压制线越高，玩家越难压
+  if (!board.freePlay) {
+    v += (play.maxOrder || 0) * 1.8;
+    const gap = board.lastHand ? (play.maxOrder - (board.lastHand.maxOrder || 0)) : 0;
+    if (gap >= 1 && gap <= 3) v += 14; // 巧压
+    if (gap >= 7 && !aiIsBomb(play)) v -= 10;
+    // 打断连压价值
+    v += (board.chain || 0) * 15;
+  } else {
+    // 自由：中高收益组合更好
+    if (play.type === 'straight' || play.type === 'airplane' || play.type === 'consecutive_pairs') v += 18;
+    if (aiIsBomb(play) && eProg < 0.65 && !board.playerDanger) v -= 25;
+  }
+
+  // 玩家手牌少 → 必须持续压制
+  if ((board.playerHandCount || 10) <= 5) v += (play.maxOrder || 0) * 1.2 + 10;
+  // 我方手牌少 → 积极清牌得分
+  if ((board.handCount || 10) <= 6) v += gain * 0.4;
+
+  return v;
+}
+
+/**
+ * 粗估：玩家跟得上我们这手的概率（手牌数 + 压制阶）
+ * 无法知道玩家牌面，用启发式
+ */
+function aiPlayerBeatProb(play, board) {
+  if (board.freePlay) {
+    // 自由出牌后玩家需跟：牌少更难跟大牌
+    const ph = board.playerHandCount || 10;
+    const order = play.maxOrder || 8;
+    let prob = 0.55;
+    if (order >= 14) prob -= 0.22;
+    else if (order >= 12) prob -= 0.12;
+    else if (order <= 8) prob += 0.1;
+    if (aiIsBomb(play)) prob = Math.min(0.35, prob - 0.15);
+    if (ph <= 4) prob -= 0.18;
+    if (ph >= 12) prob += 0.12;
+    if (play.cards && play.cards.length >= 5) prob -= 0.08; // 长牌型更难跟
+    return Math.max(0.08, Math.min(0.92, prob));
+  }
+  // 我们是跟牌：打完后玩家可能过牌拿回主动权
+  // 我们压得越大，玩家越可能过
+  const gap = board.lastHand ? (play.maxOrder - (board.lastHand.maxOrder || 0)) : 3;
+  let passP = 0.25 + Math.min(0.45, gap * 0.06);
+  if (aiIsBomb(play)) passP += 0.2;
+  if ((board.playerHandCount || 10) <= 5) passP -= 0.1;
+  return Math.max(0.1, Math.min(0.9, passP)); // 此处返回「玩家过牌/交权」概率
+}
+
+/**
+ * 1 步前瞻价值：即时估值 + 期望后续
+ */
+function aiLookaheadValue(handCards, play, ctx, board) {
+  const base = aiEvalAfterPlay(handCards, play, ctx, board);
+  const gain = aiEstimateScore(play, ctx);
+  if ((ctx.enemyScore || 0) + gain >= (ctx.enemyThreshold || 1e9)) {
+    return base + 5000; // 破境
+  }
+
+  let future = 0;
+  const used = new Set(play.cards.map(c => c.id));
+  const left = handCards.filter(c => !used.has(c.id));
+
+  if (board.freePlay) {
+    // 自由出手后玩家要跟：若玩家跟不上，我们再自由一手
+    const beatP = aiPlayerBeatProb(play, board);
+    const missP = 1 - beatP;
+    // 玩家跟不上 → 我们再出最优自由分
+    if (left.length && missP > 0.05) {
+      const nextPlays = enumeratePlays(left, null);
+      if (nextPlays.length) {
+        let bestNext = 0;
+        // 只扫前 12 个高收益，控制开销
+        const sorted = nextPlays.slice().sort((a, b) => aiEstimateScore(b, ctx) - aiEstimateScore(a, ctx)).slice(0, 12);
+        for (const np of sorted) {
+          bestNext = Math.max(bestNext, aiEstimateScore(np, ctx));
+        }
+        future += missP * (bestNext * 1.3 + 20);
+        // 若再一手能破
+        if ((ctx.enemyScore || 0) + gain + bestNext >= (ctx.enemyThreshold || 1e9)) {
+          future += missP * 800;
+        }
+      }
+    }
+    // 玩家能跟 → 我方面临被反压，保留控制更重要
+    future -= beatP * (aiIsBomb(play) ? 8 : 15);
+    // 压得太低：玩家轻松压过并连压
+    if ((play.maxOrder || 0) <= 9 && !aiIsBomb(play)) future -= beatP * 12;
+  } else {
+    // 跟牌：玩家过牌概率 → 我们拿回主动
+    const passP = aiPlayerBeatProb(play, board);
+    future += passP * 25;
+    future += (board.chain || 0) * 8; // 打断成功
+    // 2 步：若玩家过，我们下一手自由收益
+    if (left.length && passP > 0.2) {
+      const nextPlays = enumeratePlays(left, null);
+      if (nextPlays.length) {
+        const top = nextPlays.slice().sort((a, b) => aiEstimateScore(b, ctx) - aiEstimateScore(a, ctx))[0];
+        future += passP * aiEstimateScore(top, ctx) * 0.85;
+      }
+    }
+  }
+
+  // 难度：高难更信前瞻
+  const depthW = board.diff === 'legend' ? 1.35 : board.diff === 'master' ? 1.2 : board.diff === 'hard' ? 1.1 : 0.95;
+  return base + future * depthW;
+}
+
+/**
+ * 从多算法 + 收益榜收集候选，用前瞻重排（搜索层）
+ */
+function aiSearchBest(plays, handCards, ctx, board, algoIds) {
+  const candMap = new Map();
+  const add = (play, tag) => {
+    if (!play) return;
+    const k = aiPlayKey(play);
+    if (!candMap.has(k)) candMap.set(k, { play, tags: [tag] });
+    else candMap.get(k).tags.push(tag);
+  };
+
+  // 各算法建议
+  for (const id of algoIds) {
+    const def = AI_ALGORITHMS[id];
+    if (!def) continue;
+    try { add(def.fn(plays, handCards, ctx, board), def.name); } catch (_) {}
+  }
+  // 收益 Top
+  const byGain = plays.slice().sort((a, b) => aiEstimateScore(b, ctx) - aiEstimateScore(a, ctx));
+  byGain.slice(0, 6).forEach((p, i) => add(p, '收益' + (i + 1)));
+  // 跟牌：最小/次小阶差
+  if (!board.freePlay && board.lastHand) {
+    const nonBomb = plays.filter(p => !aiIsBomb(p))
+      .sort((a, b) => (a.maxOrder - b.maxOrder) || (a.cards.length - b.cards.length));
+    nonBomb.slice(0, 3).forEach((p, i) => add(p, '巧压' + (i + 1)));
+    const bombs = plays.filter(p => aiIsBomb(p));
+    bombs.slice(0, 2).forEach(p => add(p, '炸'));
+  }
+  // 收官候选
+  const fin = aiPickFinish(plays, ctx, board);
+  if (fin) add(fin, '收官');
+
+  let best = null;
+  let bestV = -1e18;
+  const report = [];
+  for (const { play, tags } of candMap.values()) {
+    let v = aiLookaheadValue(handCards, play, ctx, board);
+    // 投票加成：多算法同时看中
+    v += Math.min(40, (tags.length - 1) * 12);
+    // 策略对齐
+    if (board.strategy === 'block' && !board.freePlay) v += (play.maxOrder || 0) * 0.5;
+    if (board.strategy === 'finish') v += aiEstimateScore(play, ctx) * 0.35;
+    report.push({ name: play.name, v, tags: tags.join('+') });
+    if (v > bestV) {
+      bestV = v;
+      best = play;
+      if (ctx._aiDebug) {
+        ctx._aiDebug.algo = '推演·' + tags.slice(0, 3).join('+');
+        ctx._aiDebug.searchV = Math.round(v);
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * 微型蒙特卡洛：对候选自由牌，随机模拟玩家「能否压住」多次
+ * 只在高难 + 自由出牌时启用
+ */
+function aiMonteCarloRefine(candidates, handCards, ctx, board, samples) {
+  if (!candidates.length) return null;
+  let best = candidates[0];
+  let bestE = -1e18;
+  for (const play of candidates) {
+    let sum = 0;
+    const gain = aiEstimateScore(play, ctx);
+    const used = new Set(play.cards.map(c => c.id));
+    const left = handCards.filter(c => !used.has(c.id));
+    for (let i = 0; i < samples; i++) {
+      let e = gain;
+      // 随机玩家跟牌能力
+      const beat = Math.random() < aiPlayerBeatProb(play, board);
+      if (!beat && left.length) {
+        // 再自由一手期望
+        const np = enumeratePlays(left, null);
+        if (np.length) {
+          const top = np[Math.floor(Math.random() * Math.min(5, np.length))];
+          // 偏高收益采样
+          const sorted = np.slice().sort((a, b) => aiEstimateScore(b, ctx) - aiEstimateScore(a, ctx));
+          const pick = sorted[Math.floor(Math.random() * Math.min(4, sorted.length))];
+          e += aiEstimateScore(pick, ctx) * 0.9;
+        }
+        e += 15;
+      } else if (beat) {
+        e -= 12 + (play.maxOrder < 10 ? 8 : 0);
+      }
+      if ((ctx.enemyScore || 0) + e >= (ctx.enemyThreshold || 1e9)) e += 400;
+      sum += e;
+    }
+    const exp = sum / samples + aiRemainingStructure(handCards, play) * 2;
+    if (exp > bestE) {
+      bestE = exp;
+      best = play;
+    }
+  }
+  if (ctx._aiDebug) ctx._aiDebug.algo = (ctx._aiDebug.algo || '') + '+MC';
+  return best;
+}
+
+/**
+ * 对外入口：多算法 + 投票 + 浅层推演 + 可选 MC
  */
 function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
   let ctx = {};
@@ -1124,38 +1355,60 @@ function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
   const board = aiBuildBoard(ctx, freePlay, lastHand);
   board.handCount = handCards.length;
 
-  // 全局破境机会：高难直接 rush 收官
+  // 确定性收官
   const finish = aiPickFinish(plays, ctx, board);
-  if (finish && (board.needEnemy <= aiEstimateScore(finish, ctx))) {
-    if (board.diff !== 'normal' || board.enemyNearWin || board.strategy === 'finish' || Math.random() < 0.7) {
+  if (finish && aiEstimateScore(finish, ctx) >= board.needEnemy) {
+    if (board.diff !== 'normal' || board.enemyNearWin || board.strategy === 'finish' || Math.random() < 0.85) {
       if (ctx._aiDebug) ctx._aiDebug.algo = '收官';
       return finish;
     }
   }
 
   const algos = aiSelectAlgorithms(ctx, board);
+
+  // 搜索层：候选池 + 前瞻（险途以上默认开；常道在关键局面开）
+  const useSearch = board.diff !== 'normal'
+    || board.playerDanger
+    || board.enemyNearWin
+    || board.chain >= 2
+    || board.strategy === 'finish'
+    || board.strategy === 'aggressive'
+    || board.endGame;
+
   let play = null;
-  if (algos.length === 1) {
+  if (useSearch) {
+    play = aiSearchBest(plays, handCards, ctx, board, algos.length ? algos : ['hybrid', 'rush', 'control']);
+  } else if (algos.length === 1) {
     play = AI_ALGORITHMS[algos[0]].fn(plays, handCards, ctx, board);
     if (ctx._aiDebug) ctx._aiDebug.algo = AI_ALGORITHMS[algos[0]].name;
   } else {
     play = aiEnsembleVote(algos, plays, handCards, ctx, board);
   }
 
-  // 跟牌且只剩炸：高难少过牌
+  // 高难自由出牌：MC 在 top 候选中精修
+  if (play && board.freePlay && (board.diff === 'master' || board.diff === 'legend' || board.enemyNearWin)) {
+    const pool = plays.slice().sort((a, b) => aiLookaheadValue(handCards, b, ctx, board) - aiLookaheadValue(handCards, a, ctx, board)).slice(0, 5);
+    if (!pool.some(p => aiPlayKey(p) === aiPlayKey(play))) pool.unshift(play);
+    const samples = board.diff === 'legend' ? 14 : 8;
+    const mc = aiMonteCarloRefine(pool, handCards, ctx, board, samples);
+    if (mc) play = mc;
+  }
+
+  // 跟牌只剩炸：高难少过
   if (!freePlay && play && aiIsBomb(play)) {
     const hasNonBomb = plays.some(p => !aiIsBomb(p));
     if (!hasNonBomb && !board.playerDanger && !board.playerNear && !board.lateGame
       && board.strategy !== 'aggressive' && board.strategy !== 'finish') {
-      const passChance = board.diff === 'legend' ? 0.03 : board.diff === 'master' ? 0.07 : board.diff === 'hard' ? 0.12 : 0.2;
+      const passChance = board.diff === 'legend' ? 0.02 : board.diff === 'master' ? 0.05 : board.diff === 'hard' ? 0.1 : 0.18;
       if (Math.random() < passChance) return null;
     }
   }
 
-  // 自由必须出牌：若算法返回空，hybrid 兜底
   if (!play && freePlay && plays.length) {
-    play = aiAlgoHybrid(plays, handCards, ctx, board) || plays[0];
-    if (ctx._aiDebug) ctx._aiDebug.algo = '兜底';
+    play = aiSearchBest(plays, handCards, ctx, board, ['hybrid', 'rush', 'tempo'])
+      || aiAlgoHybrid(plays, handCards, ctx, board)
+      || plays[0];
+    if (ctx._aiDebug && !ctx._aiDebug.algo) ctx._aiDebug.algo = '兜底推演';
   }
   return play;
 }
