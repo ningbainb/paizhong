@@ -1365,11 +1365,11 @@ kbd {
 }
 
 /* ===== 响应式：平板 / 窄桌面 ===== */
+/* 详细移动端见 css/mobile.css（后加载覆盖） */
 @media (max-width: 1100px) {
   .battle-desktop {
     grid-template-columns: 220px 1fr;
   }
-  .battle-side.right { display: none; }
   .title-layout {
     grid-template-columns: 1fr;
     padding: 28px 32px;
@@ -1379,40 +1379,6 @@ kbd {
   .shop-grid { grid-template-columns: 1fr 1fr; }
   .map-path { grid-template-columns: 1fr; }
   .help-grid { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 780px) {
-  :root {
-    --card-w: 56px;
-    --card-h: 78px;
-    --header-h: 48px;
-  }
-  .app-header { padding: 0 14px; }
-  .brand-tag { display: none; }
-  .battle-desktop {
-    grid-template-columns: 1fr;
-    padding: 8px;
-    gap: 8px;
-  }
-  .battle-side.left {
-    flex-direction: row;
-    flex-wrap: wrap;
-    max-height: none;
-    gap: 10px;
-  }
-  .battle-side.left .side-block.grow {
-    width: 100%;
-    max-height: 72px;
-  }
-  .battle-side.left .btn-block { width: auto; margin-left: auto; }
-  .title-main { letter-spacing: 10px; font-size: 56px; }
-  .title-stats { flex-wrap: wrap; }
-  .char-grid { grid-template-columns: 1fr; }
-  .shop-grid { grid-template-columns: 1fr; }
-  .content-shell { padding: 16px; }
-  .card { margin-left: -18px; }
-  .action-bar .btn { min-width: 0; flex: 1; }
-  .table-felt { border-radius: 16px; padding: 12px; }
 }
 
 /* ===== 模式 / 图鉴 / 成就 / 阅历 ===== */
