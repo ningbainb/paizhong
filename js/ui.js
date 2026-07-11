@@ -2467,6 +2467,9 @@ const UI = {
     // 已有奇牌（删除 / 柳千变献祭）
     const ownedEl = this.$('shop-owned');
     ownedEl.innerHTML = '';
+    if (!(run.qipai || []).length) {
+      ownedEl.innerHTML = '<div class="empty-hint">暂无奇牌 · 可在上方购置或开局/破境时选择</div>';
+    }
     run.qipai.forEach(q => {
       const item = document.createElement('div');
       item.className = 'shop-item';
