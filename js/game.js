@@ -1902,6 +1902,7 @@ class PaiZongGame {
       strategy = 'defend';
     }
 
+    const aiDebug = {};
     const aiCtx = {
       strategy,
       freePlay,
@@ -1917,6 +1918,8 @@ class PaiZongGame {
       difficulty: diff.id,
       aiRate,
       stageType: b.stageType,
+      bossId: b.boss?.id || this.run.character?.id || null,
+      _aiDebug: aiDebug,
     };
 
     let play = aiChoosePlay(usable, last, aiCtx);
@@ -1981,7 +1984,9 @@ class PaiZongGame {
     b.comboMomentumQi = 0;
     b.passStreak = 0;
 
-    this.log(`守关者【${play.name}】+${aiScore}（${b.enemyScore}/${b.enemyThreshold}）`);
+    const algoTag = aiDebug.algo ? ` ·${aiDebug.algo}` : '';
+    this.log(`守关者【${play.name}】+${aiScore}（${b.enemyScore}/${b.enemyThreshold}）${algoTag}`);
+    b.lastEnemyAlgo = aiDebug.algo || '';
     // 被压制，气脉中断
     b.initiativeStreak = 0;
     this.refreshBattleDynamics();

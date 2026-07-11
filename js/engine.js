@@ -726,9 +726,12 @@ function pickQipaiChoicesFromPool(pool, ownedIds, count, preferCursed = false) {
   return result;
 }
 
-/**
- * AI 评估一手牌的「结构价值」：越大越该留着
+﻿/**
+ * ========== 多算法守关者 AI ==========
+ * 算法：rush 破境狂 | control 锁喉 | economize 算子 | tempo 牌势 | hybrid 均衡
+ * 调度：按难度/策略/关卡选择主算法，高难可 ensemble 投票
  */
+
 function aiCardControlValue(hand) {
   if (!hand) return 0;
   let v = hand.maxOrder * 1.35 + hand.cards.length * 0.55;
@@ -741,14 +744,10 @@ function aiCardControlValue(hand) {
   return v;
 }
 
-/**
- * 估算出牌后对「破境进度」的贡献
- */
 function aiEstimateScore(hand, ctx = {}) {
   if (!hand) return 0;
   const rate = ctx.aiRate != null ? ctx.aiRate : 0.55;
   let s = (hand.liSum || 0) * (hand.baseQi || 1) * rate;
-  // 同花粗略加成（若卡上有 suit）
   if (hand.cards && hand.cards.length >= 2) {
     const s0 = hand.cards[0].suit;
     if (s0 && hand.cards.every(c => c.suit === s0 || c.joker)) s *= 1.12;
@@ -758,18 +757,13 @@ function aiEstimateScore(hand, ctx = {}) {
   return s;
 }
 
-/**
- * 出完这手后，剩余手牌是否仍有结构（粗算）
- */
 function aiRemainingStructure(handCards, play) {
   const used = new Set(play.cards.map(c => c.id));
   const left = handCards.filter(c => !used.has(c.id));
-  if (!left.length) return 4; // 打空手牌可重整，略加分
+  if (!left.length) return 4;
   const freePlays = enumeratePlays(left, null);
   if (!freePlays.length) return -8;
-  let bombs = 0;
-  let best = 0;
-  let maxCtrl = 0;
+  let bombs = 0, best = 0, maxCtrl = 0;
   const types = new Set();
   for (const p of freePlays) {
     types.add(p.type);
@@ -777,33 +771,21 @@ function aiRemainingStructure(handCards, play) {
     best = Math.max(best, p.baseQi * p.liSum);
     maxCtrl = Math.max(maxCtrl, p.maxOrder || 0);
   }
-  // 留有大控制牌 / 炸弹更利于后手压制
   return types.size * 2.2 + bombs * 10 + Math.min(24, best / 18) + maxCtrl * 0.15
     - (left.length > 14 ? 4 : 0)
     - (left.length <= 3 && bombs === 0 ? 3 : 0);
 }
 
-/**
- * 守关者 AI：局面启发式 + 抢分/打断/留牌
- * ctx: {
- *   strategy: normal|block|aggressive|defend|finish,
- *   freePlay, playerScore, playerThreshold, enemyScore, enemyThreshold,
- *   playerChain, playerHandCount, enemyHandCount,
- *   round, maxSoftRound, difficulty, aiRate, stageType
- * }
- */
-function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
-  let ctx = {};
-  if (typeof strategyOrCtx === 'string') {
-    ctx = { strategy: strategyOrCtx };
-  } else if (strategyOrCtx && typeof strategyOrCtx === 'object') {
-    ctx = strategyOrCtx;
-  }
-  const strategy = ctx.strategy || 'normal';
-  const freePlay = !!(ctx.freePlay || !lastHand);
-  const plays = enumeratePlays(handCards, freePlay ? null : lastHand);
-  if (!plays.length) return null;
+function aiPlayKey(play) {
+  if (!play || !play.cards) return '';
+  return play.cards.map(c => c.id).sort().join(',');
+}
 
+function aiIsBomb(play) {
+  return play && (play.type === 'bomb' || play.type === 'rocket');
+}
+
+function aiBuildBoard(ctx, freePlay, lastHand) {
   const pScore = ctx.playerScore || 0;
   const pTh = Math.max(1, ctx.playerThreshold || 1000);
   const eScore = ctx.enemyScore || 0;
@@ -812,210 +794,371 @@ function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
   const eProg = eScore / eTh;
   const needEnemy = Math.max(0, eTh - eScore);
   const needPlayer = Math.max(0, pTh - pScore);
-  const playerDanger = pProg >= 0.72 || needPlayer < Math.max(100, pTh * 0.1);
-  const playerNear = pProg >= 0.52;
-  const enemyBehind = eProg + 0.1 < pProg;
-  const enemyNearWin = eProg >= 0.68 || needEnemy < Math.max(140, eTh * 0.12);
-  const chain = ctx.playerChain || 0;
   const round = ctx.round || 1;
   const maxR = ctx.maxSoftRound || 24;
-  const lateGame = round > maxR * 0.5;
-  const endGame = round > maxR * 0.72;
-  const handCount = handCards.length;
-  const diff = ctx.difficulty || 'normal';
-  const isBoss = ctx.stageType === 'zong' || ctx.stageType === 'an';
+  return {
+    freePlay,
+    lastHand,
+    strategy: ctx.strategy || 'normal',
+    pProg, eProg, needEnemy, needPlayer,
+    playerDanger: pProg >= 0.72 || needPlayer < Math.max(100, pTh * 0.1),
+    playerNear: pProg >= 0.52,
+    enemyBehind: eProg + 0.1 < pProg,
+    enemyNearWin: eProg >= 0.68 || needEnemy < Math.max(140, eTh * 0.12),
+    chain: ctx.playerChain || 0,
+    round, maxR,
+    lateGame: round > maxR * 0.5,
+    endGame: round > maxR * 0.72,
+    handCount: ctx.enemyHandCount || 0,
+    playerHandCount: ctx.playerHandCount || 10,
+    diff: ctx.difficulty || 'normal',
+    isBoss: ctx.stageType === 'zong' || ctx.stageType === 'an',
+    bombBias: ctx.difficulty === 'legend' ? 28 : ctx.difficulty === 'master' ? 18 : ctx.difficulty === 'hard' ? 10 : 3,
+  };
+}
 
-  const bombBias = diff === 'legend' ? 28 : diff === 'master' ? 18 : diff === 'hard' ? 10 : 3;
-  const skillBias = diff === 'legend' ? 1.25 : diff === 'master' ? 1.15 : diff === 'hard' ? 1.08 : 1.0;
-  const blockBias = (strategy === 'block' || chain >= 2) ? 22 + chain * 8 : 0;
-  const gainWeight = freePlay
-    ? (1.65 * skillBias + (strategy === 'aggressive' || strategy === 'finish' ? 0.45 : 0))
-    : (0.55 * skillBias + (strategy === 'aggressive' ? 0.25 : 0));
-
-  // 先找「这一手就能破境」的候选，强制优先
-  let finishPlay = null;
-  let finishGain = -1;
+/** 能破境则优先非炸收官 */
+function aiPickFinish(plays, ctx, board) {
+  let best = null;
+  let bestGain = -1;
   for (const play of plays) {
     const g = aiEstimateScore(play, ctx);
-    if (g >= needEnemy * 0.92 && g > finishGain) {
-      // 能破时优先非炸；仅当非炸够不到才用炸
-      const isBomb = play.type === 'bomb' || play.type === 'rocket';
-      if (!finishPlay) {
-        finishPlay = play;
-        finishGain = g;
-      } else {
-        const wasBomb = finishPlay.type === 'bomb' || finishPlay.type === 'rocket';
-        if (wasBomb && !isBomb) {
-          finishPlay = play;
-          finishGain = g;
-        } else if (wasBomb === isBomb && g > finishGain) {
-          finishPlay = play;
-          finishGain = g;
-        }
-      }
+    if (g < board.needEnemy * 0.92) continue;
+    const bomb = aiIsBomb(play);
+    if (!best) { best = play; bestGain = g; continue; }
+    const wasBomb = aiIsBomb(best);
+    if (wasBomb && !bomb) { best = play; bestGain = g; }
+    else if (wasBomb === bomb && g > bestGain) { best = play; bestGain = g; }
+    else if (!wasBomb && !bomb && g < bestGain && g >= board.needEnemy) { best = play; bestGain = g; }
+  }
+  return best;
+}
+
+function aiArgMax(plays, scoreFn) {
+  let best = null, bestS = -1e18;
+  for (const p of plays) {
+    const s = scoreFn(p);
+    if (s > bestS) { bestS = s; best = p; }
+  }
+  return best;
+}
+
+/**
+ * 算法① 破境狂 rush：最大化即时得分与破境概率
+ */
+function aiAlgoRush(plays, handCards, ctx, board) {
+  const fin = aiPickFinish(plays, ctx, board);
+  if (fin && (board.enemyNearWin || board.endGame || board.strategy === 'finish' || board.strategy === 'aggressive')) {
+    return fin;
+  }
+  return aiArgMax(plays, (play) => {
+    const gain = aiEstimateScore(play, ctx);
+    const bomb = aiIsBomb(play);
+    let s = gain * 2.4 + play.baseQi * 12 + play.cards.length * 2;
+    if (play.type === 'straight') s += 20 + (play.length - 5) * 5;
+    if (play.type === 'consecutive_pairs') s += 22;
+    if (play.type === 'airplane') s += 24;
+    if (bomb) {
+      s += board.enemyNearWin || board.enemyBehind || board.playerDanger ? 40 : -30;
     }
-  }
-  if (finishPlay && (enemyNearWin || strategy === 'finish' || strategy === 'aggressive' || endGame || diff !== 'normal')) {
-    return finishPlay;
-  }
-  // 常道：有把握也直接破
-  if (finishPlay && finishGain >= needEnemy) return finishPlay;
+    if (gain >= board.needEnemy * 0.5) s += 30;
+    if (gain >= board.needEnemy * 0.8) s += 50;
+    s += (Math.random() - 0.5) * 3;
+    return s;
+  });
+}
 
-  let best = null;
-  let bestScore = -1e9;
-  // 记录 top 候选，终局再比一次「破境余量」
-  const ranked = [];
+/**
+ * 算法② 锁喉 control：打断连压、抬高压制线、限制玩家
+ */
+function aiAlgoControl(plays, handCards, ctx, board) {
+  if (board.freePlay) {
+    // 自由时出中等控制+留大牌
+    return aiArgMax(plays, (play) => {
+      const bomb = aiIsBomb(play);
+      let s = play.maxOrder * 2 + play.baseQi * 5;
+      if (bomb) s -= 50 - board.bombBias;
+      if (play.type === 'single' && play.maxOrder >= 13) s -= 15; // 留着压
+      if (play.type === 'pair' && play.maxOrder >= 12) s -= 8;
+      if (play.type === 'straight' || play.type === 'airplane') s += 10;
+      s += aiRemainingStructure(handCards, play) * 1.2;
+      if (board.playerDanger && !bomb) s += play.maxOrder * 1.5;
+      return s + (Math.random() - 0.5) * 2;
+    });
+  }
+  // 跟牌：优先打断；巧压；必要时炸
+  return aiArgMax(plays, (play) => {
+    const bomb = aiIsBomb(play);
+    const gap = board.lastHand ? play.maxOrder - (board.lastHand.maxOrder || 0) : 0;
+    let s = 60 - aiCardControlValue(play) * 0.7;
+    if (gap >= 1 && gap <= 3) s += 22;
+    if (gap >= 6) s -= 15;
+    s += board.chain * 12;
+    if (board.chain >= 2) s += 25;
+    if (board.chain >= 3 && bomb) s += 45 + board.bombBias;
+    if (bomb) {
+      const nonBomb = plays.some(p => !aiIsBomb(p));
+      s += nonBomb ? (-40 + board.bombBias) : 100;
+      if (board.playerDanger) s += 50;
+    }
+    // 压完后仍有大牌更好
+    s += aiRemainingStructure(handCards, play) * 0.9;
+    s += play.maxOrder * 0.8; // 抬高压制线
+    return s + (Math.random() - 0.5) * 2;
+  });
+}
 
-  for (const play of plays) {
-    const isBomb = play.type === 'bomb' || play.type === 'rocket';
-    const control = aiCardControlValue(play);
+/**
+ * 算法③ 算子 economize：最小代价过牌压制，惜炸
+ */
+function aiAlgoEconomize(plays, handCards, ctx, board) {
+  if (board.freePlay) {
+    return aiArgMax(plays, (play) => {
+      const bomb = aiIsBomb(play);
+      const gain = aiEstimateScore(play, ctx);
+      // 性价比：得分/张数
+      let s = gain / Math.max(1, play.cards.length) * 3 + gain * 0.5;
+      if (bomb) s -= 70 - board.bombBias * 0.5;
+      if (play.maxOrder >= 14 && (play.type === 'single' || play.type === 'pair')) s -= 12;
+      s += aiRemainingStructure(handCards, play) * 1.4;
+      // 仍要推进
+      if (board.enemyNearWin) s += gain * 1.2;
+      return s + (Math.random() - 0.5) * 2;
+    });
+  }
+  // 最小阶差合法压
+  return aiArgMax(plays, (play) => {
+    const bomb = aiIsBomb(play);
+    const gap = board.lastHand ? play.maxOrder - (board.lastHand.maxOrder || 0) : 99;
+    let s = 100 - gap * 8 - play.cards.length * 2 - play.maxOrder * 0.5;
+    if (bomb) {
+      const nonBomb = plays.some(p => !aiIsBomb(p));
+      s = nonBomb ? -80 : 50;
+      if (board.playerDanger || board.chain >= 3) s += 60 + board.bombBias;
+    }
+    if (gap >= 1 && gap <= 2) s += 15;
+    if (board.chain >= 2 && !bomb) s += 10;
+    return s + (Math.random() - 0.5) * 1.5;
+  });
+}
+
+/**
+ * 算法④ 牌势 tempo：长组合、连型、牌权与结构
+ */
+function aiAlgoTempo(plays, handCards, ctx, board) {
+  return aiArgMax(plays, (play) => {
+    const bomb = aiIsBomb(play);
+    const gain = aiEstimateScore(play, ctx);
+    let s = gain * 1.1 + aiRemainingStructure(handCards, play) * 1.6;
+    if (play.type === 'straight') s += 28 + (play.length - 5) * 6;
+    if (play.type === 'consecutive_pairs') s += 30;
+    if (play.type === 'airplane') s += 32;
+    if (play.type === 'triple_two' || play.type === 'triple_one') s += 14;
+    if (play.type === 'triple') s += 10;
+    if (bomb) s -= board.freePlay ? (45 - board.bombBias) : (30 - board.bombBias);
+    if (!board.freePlay) {
+      const gap = board.lastHand ? play.maxOrder - (board.lastHand.maxOrder || 0) : 0;
+      if (gap >= 1 && gap <= 4) s += 12;
+      s += board.chain * 6;
+    }
+    if (board.handCount <= 8) s += 15;
+    if (board.enemyNearWin) s += gain * 0.8;
+    return s + (Math.random() - 0.5) * 2.5;
+  });
+}
+
+/**
+ * 算法⑤ 均衡 hybrid：综合抢分+控制+留牌（原加强版）
+ */
+function aiAlgoHybrid(plays, handCards, ctx, board) {
+  const fin = aiPickFinish(plays, ctx, board);
+  if (fin && (board.enemyNearWin || board.strategy === 'finish' || board.endGame || board.diff !== 'normal')) {
+    return fin;
+  }
+  if (fin && fin && aiEstimateScore(fin, ctx) >= board.needEnemy) return fin;
+
+  return aiArgMax(plays, (play) => {
+    const bomb = aiIsBomb(play);
     const gain = aiEstimateScore(play, ctx);
     const remain = aiRemainingStructure(handCards, play);
-    const gap = (!freePlay && lastHand) ? (play.maxOrder - (lastHand.maxOrder || 0)) : 0;
-    let score = 0;
-
-    // —— 抢分核心：收益权重显著提高 ——
-    score += gain * gainWeight;
-
-    if (freePlay) {
-      score += play.baseQi * 10;
-      score += Math.min(play.cards.length, 10) * 1.8;
-
-      if (play.type === 'straight') score += 16 + (play.length - 5) * 4;
-      if (play.type === 'consecutive_pairs') score += 18;
-      if (play.type === 'airplane') score += 20;
-      if (play.type === 'triple' || play.type === 'triple_one' || play.type === 'triple_two') score += 9;
-      if (play.type === 'pair') score += 4;
-
-      // 接近破境时全力灌分
-      if (enemyNearWin) score += gain * 0.9 + 25;
-      if (needEnemy > 0 && gain >= needEnemy * 0.45) score += 18;
-      if (needEnemy > 0 && gain >= needEnemy * 0.7) score += 28;
-
-      // 炸弹：默认留，落后/玩家危险/终局才果断
-      if (isBomb) {
-        score -= 48 - bombBias;
-        if (enemyBehind || enemyNearWin || lateGame || strategy === 'finish') score += 38 + bombBias;
-        if (playerDanger) score += 32 + bombBias;
-        if (strategy === 'aggressive') score += 22;
-        if (play.type === 'rocket' && !playerDanger && !enemyNearWin) score -= 8;
+    const gap = (!board.freePlay && board.lastHand) ? play.maxOrder - (board.lastHand.maxOrder || 0) : 0;
+    const skillBias = board.diff === 'legend' ? 1.25 : board.diff === 'master' ? 1.15 : board.diff === 'hard' ? 1.08 : 1;
+    let s = 0;
+    if (board.freePlay) {
+      s += gain * 1.7 * skillBias + play.baseQi * 10 + Math.min(play.cards.length, 10) * 1.8;
+      if (play.type === 'straight') s += 16 + (play.length - 5) * 4;
+      if (play.type === 'consecutive_pairs') s += 18;
+      if (play.type === 'airplane') s += 20;
+      if (bomb) {
+        s -= 48 - board.bombBias;
+        if (board.enemyBehind || board.enemyNearWin || board.lateGame) s += 38 + board.bombBias;
+        if (board.playerDanger) s += 32;
       }
-
-      // 开局保留顶大单/对，中后期可打
-      if ((play.type === 'single' || play.type === 'pair') && play.maxOrder >= 14) {
-        score -= lateGame || enemyBehind ? 2 : 12;
-      }
-      if (handCount <= 7) score += gain * 0.65 + 12;
-      if (handCount <= 4) score += gain * 0.4 + 10;
-      score += remain * 1.05;
+      s += remain * 1.0;
     } else {
-      // 跟牌：最小有效压制 + 打断 + 必要用炸
-      const gap = lastHand ? (play.maxOrder - (lastHand.maxOrder || 0)) : 0;
-      score += 48 - control * 0.85;
-      score += gain * 0.55;
-
-      if (!isBomb && lastHand) {
-        score += (20 - play.maxOrder) * 0.85;
-        score += (8 - Math.min(play.cards.length, 8));
-        if (gap >= 1 && gap <= 3) score += 16; // 巧压
-        else if (gap === 4 || gap === 5) score += 4;
-        else if (gap >= 7) score -= 12; // 大材小用
-      } else if (!isBomb) {
-        score += (20 - play.maxOrder) * 0.85;
+      s += 48 - aiCardControlValue(play) * 0.85 + gain * 0.55;
+      if (gap >= 1 && gap <= 3) s += 16;
+      else if (gap >= 7) s -= 12;
+      s += board.chain * 8;
+      if (board.chain >= 3 && bomb) s += 35 + board.bombBias;
+      if (bomb) {
+        const nonBomb = plays.some(p => !aiIsBomb(p));
+        s += nonBomb ? (-55 + board.bombBias) : 110;
+        if (board.playerDanger) s += 50;
       }
-
-      // 打断连压：强势加分
-      if (chain >= 1) score += 6 + chain * 4;
-      if (chain >= 2 && !isBomb) {
-        score += blockBias;
-        if (play.maxOrder >= 9) score += 8;
-      }
-      if (chain >= 3) score += 18;
-      if (chain >= 4) score += 14;
-      // 用炸弹打断超长连
-      if (chain >= 3 && isBomb) score += 35 + bombBias;
-
-      if (isBomb) {
-        score -= 62 - bombBias;
-        const hasNonBomb = plays.some(p => p.type !== 'bomb' && p.type !== 'rocket');
-        if (!hasNonBomb) score += 120;
-        if (playerDanger) score += 55 + bombBias;
-        else if (playerNear && enemyBehind) score += 32;
-        if (strategy === 'aggressive' || strategy === 'finish') score += 28 + bombBias;
-        if (lateGame && enemyBehind) score += 22;
-        if (play.type === 'rocket') score -= (playerDanger || endGame) ? 4 : 14;
-      }
-
-      score += remain * 0.75;
-      if ((ctx.playerHandCount || 10) <= 6 && !isBomb) score += 12;
-      if ((ctx.playerHandCount || 10) <= 4) score += 10;
+      s += remain * 0.75;
     }
+    if (board.strategy === 'aggressive') s += gain * 0.2 + 6;
+    if (board.strategy === 'finish') s += gain * 0.5 + 18;
+    if (board.strategy === 'block' && !board.freePlay) s += 14;
+    s += (Math.random() - 0.5) * (board.diff === 'legend' ? 1.5 : 4);
+    return s;
+  });
+}
 
-    // 难度与关卡类型
-    if (diff === 'hard' || diff === 'master' || diff === 'legend') {
-      if (!freePlay && chain >= 1) score += 8;
-      if (freePlay && play.baseQi >= 2.0) score += 8;
-      if (enemyBehind) score += gain * 0.15;
+const AI_ALGORITHMS = {
+  rush: { id: 'rush', name: '破境狂', fn: aiAlgoRush },
+  control: { id: 'control', name: '锁喉', fn: aiAlgoControl },
+  economize: { id: 'economize', name: '算子', fn: aiAlgoEconomize },
+  tempo: { id: 'tempo', name: '牌势', fn: aiAlgoTempo },
+  hybrid: { id: 'hybrid', name: '均衡', fn: aiAlgoHybrid },
+};
+
+/**
+ * 根据局面选择 1～N 个算法（高难可投票）
+ */
+function aiSelectAlgorithms(ctx, board) {
+  const diff = board.diff;
+  const primary = [];
+  // 局面主风格
+  if (board.strategy === 'finish' || board.enemyNearWin) primary.push('rush');
+  else if (board.strategy === 'block' || board.chain >= 2) primary.push('control');
+  else if (board.strategy === 'defend') primary.push('economize');
+  else if (board.strategy === 'aggressive') primary.push('rush', 'tempo');
+  else primary.push('hybrid');
+
+  // 关卡个性
+  if (board.isBoss) primary.push('control');
+  if (ctx.stageType === 'zong') primary.push('rush');
+  if (ctx.bossId === 'ying') primary.push('control');
+  if (ctx.bossId === 'void' || ctx.bossId === 'paizong') primary.push('rush', 'hybrid');
+  if (ctx.bossId === 'gui') primary.push('tempo');
+
+  // 难度：多算法 ensemble
+  let pool = [...new Set(primary)];
+  if (diff === 'hard') {
+    pool.push('hybrid');
+  } else if (diff === 'master') {
+    pool.push('rush', 'control', 'hybrid');
+  } else if (diff === 'legend') {
+    pool = ['rush', 'control', 'economize', 'tempo', 'hybrid'];
+  } else {
+    // 常道：主算法 + 20% 换一套增加变化
+    if (Math.random() < 0.22) {
+      const all = Object.keys(AI_ALGORITHMS);
+      pool = [all[Math.floor(Math.random() * all.length)]];
+    } else {
+      pool = [pool[0] || 'hybrid'];
     }
-    if (diff === 'master' || diff === 'legend') {
-      if (playerNear) score += 10;
-      if (!freePlay && gap >= 1 && gap <= 2) score += 6;
+  }
+  return [...new Set(pool)].filter(id => AI_ALGORITHMS[id]);
+}
+
+/**
+ * 集成：多算法投票；平票时用 rush/hybrid 破境优先
+ */
+function aiEnsembleVote(algoIds, plays, handCards, ctx, board) {
+  const votes = new Map(); // key -> { play, w, names }
+  const weights = {
+    rush: board.enemyNearWin || board.strategy === 'finish' ? 1.4 : 1.1,
+    control: board.chain >= 2 || board.playerDanger ? 1.35 : 1.0,
+    economize: board.strategy === 'defend' ? 1.2 : 0.9,
+    tempo: 1.0,
+    hybrid: 1.15,
+  };
+  for (const id of algoIds) {
+    const def = AI_ALGORITHMS[id];
+    if (!def) continue;
+    let pick = null;
+    try { pick = def.fn(plays, handCards, ctx, board); } catch (_) { pick = null; }
+    if (!pick) continue;
+    const key = aiPlayKey(pick);
+    const w = weights[id] || 1;
+    const cur = votes.get(key) || { play: pick, w: 0, names: [] };
+    cur.w += w;
+    cur.names.push(def.name);
+    votes.set(key, cur);
+  }
+  if (!votes.size) return null;
+  let best = null;
+  for (const v of votes.values()) {
+    if (!best || v.w > best.w) best = v;
+    else if (v.w === best.w) {
+      // 平票：能破境 > 非炸 > 高收益
+      const g1 = aiEstimateScore(v.play, ctx);
+      const g0 = aiEstimateScore(best.play, ctx);
+      if (g1 >= board.needEnemy && g0 < board.needEnemy) best = v;
+      else if (aiIsBomb(best.play) && !aiIsBomb(v.play) && g1 >= g0 * 0.9) best = v;
+      else if (g1 > g0 + 15) best = v;
     }
-    if (isBoss) {
-      score += gain * 0.12;
-      if (chain >= 2) score += 8;
-    }
+  }
+  if (best && ctx._aiDebug) {
+    ctx._aiDebug.algo = best.names.join('+');
+    ctx._aiDebug.votes = best.w;
+  }
+  return best ? best.play : null;
+}
 
-    // 策略微调
-    if (strategy === 'block' && !freePlay) score += 12;
-    if (strategy === 'aggressive') score += gain * 0.2 + 6;
-    if (strategy === 'finish') score += gain * 0.55 + 20;
-    if (strategy === 'defend' && !isBomb) score += remain * 0.4;
+/**
+ * 对外入口：多算法调度
+ */
+function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
+  let ctx = {};
+  if (typeof strategyOrCtx === 'string') ctx = { strategy: strategyOrCtx };
+  else if (strategyOrCtx && typeof strategyOrCtx === 'object') ctx = strategyOrCtx;
 
-    // 随机性：高难几乎确定
-    const jitter = diff === 'legend' ? 1.2 : diff === 'master' ? 2.5 : diff === 'hard' ? 4 : 6.5;
-    score += (Math.random() - 0.5) * jitter;
+  const freePlay = !!(ctx.freePlay || !lastHand);
+  const plays = enumeratePlays(handCards, freePlay ? null : lastHand);
+  if (!plays.length) return null;
 
-    ranked.push({ play, score, gain, isBomb });
-    if (score > bestScore) {
-      bestScore = score;
-      best = play;
+  const board = aiBuildBoard(ctx, freePlay, lastHand);
+  board.handCount = handCards.length;
+
+  // 全局破境机会：高难直接 rush 收官
+  const finish = aiPickFinish(plays, ctx, board);
+  if (finish && (board.needEnemy <= aiEstimateScore(finish, ctx))) {
+    if (board.diff !== 'normal' || board.enemyNearWin || board.strategy === 'finish' || Math.random() < 0.7) {
+      if (ctx._aiDebug) ctx._aiDebug.algo = '收官';
+      return finish;
     }
   }
 
-  // 终局二次裁决：在 top 候选里选更接近破境的
-  if (ranked.length >= 2 && (enemyNearWin || endGame || strategy === 'finish' || strategy === 'aggressive')) {
-    ranked.sort((a, b) => b.score - a.score);
-    const top = ranked.slice(0, Math.min(5, ranked.length));
-    let pick = top[0];
-    for (const c of top) {
-      // 能破境者优先
-      if (c.gain >= needEnemy && pick.gain < needEnemy) pick = c;
-      else if (c.gain >= needEnemy && pick.gain >= needEnemy) {
-        // 都能破：非炸优先，其次浪费少
-        if (pick.isBomb && !c.isBomb) pick = c;
-        else if (pick.isBomb === c.isBomb && c.gain < pick.gain) pick = c;
-      } else if (c.gain < needEnemy && pick.gain < needEnemy) {
-        // 都不能破：更接近破境的
-        if (c.gain > pick.gain + 8) pick = c;
-      }
-    }
-    best = pick.play;
+  const algos = aiSelectAlgorithms(ctx, board);
+  let play = null;
+  if (algos.length === 1) {
+    play = AI_ALGORITHMS[algos[0]].fn(plays, handCards, ctx, board);
+    if (ctx._aiDebug) ctx._aiDebug.algo = AI_ALGORITHMS[algos[0]].name;
+  } else {
+    play = aiEnsembleVote(algos, plays, handCards, ctx, board);
   }
 
-  // 仅炸能压：高难更少无谓过牌
-  if (!freePlay && best) {
-    const isBomb = best.type === 'bomb' || best.type === 'rocket';
-    const hasNonBomb = plays.some(p => p.type !== 'bomb' && p.type !== 'rocket');
-    if (isBomb && !hasNonBomb && !playerDanger && !playerNear && !lateGame && strategy !== 'aggressive' && strategy !== 'finish') {
-      const passChance = diff === 'legend' ? 0.04 : diff === 'master' ? 0.08 : diff === 'hard' ? 0.12 : 0.22;
+  // 跟牌且只剩炸：高难少过牌
+  if (!freePlay && play && aiIsBomb(play)) {
+    const hasNonBomb = plays.some(p => !aiIsBomb(p));
+    if (!hasNonBomb && !board.playerDanger && !board.playerNear && !board.lateGame
+      && board.strategy !== 'aggressive' && board.strategy !== 'finish') {
+      const passChance = board.diff === 'legend' ? 0.03 : board.diff === 'master' ? 0.07 : board.diff === 'hard' ? 0.12 : 0.2;
       if (Math.random() < passChance) return null;
     }
   }
 
-  return best;
+  // 自由必须出牌：若算法返回空，hybrid 兜底
+  if (!play && freePlay && plays.length) {
+    play = aiAlgoHybrid(plays, handCards, ctx, board) || plays[0];
+    if (ctx._aiDebug) ctx._aiDebug.algo = '兜底';
+  }
+  return play;
 }
-
 /**
  * 推荐出牌
  * ctx: { needScore, freePlay, scoreCtx, preferClear, scoreFn }
