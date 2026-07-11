@@ -171,10 +171,273 @@ class PaiZongGame {
       // 导入后清局内，避免脏状态
       this.run = null;
       this.battle = null;
+      this.clearRunSave();
       return { ok: true };
     } catch (e) {
       return { ok: false, reason: '解析失败：' + (e.message || '格式错误') };
     }
+  }
+
+  // ===== 局内断点续玩（localStorage paizong_run_v1）=====
+
+  static get RUN_SAVE_KEY() { return 'paizong_run_v1'; }
+
+  _setToArr(v) {
+    if (v instanceof Set) return [...v];
+    if (Array.isArray(v)) return v;
+    return [];
+  }
+
+  _arrToSet(v) {
+    return new Set(Array.isArray(v) ? v : []);
+  }
+
+  /** 深拷贝为可 JSON 的纯对象 */
+  _jsonClone(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  serializeRun() {
+    if (!this.run) return null;
+    const r = this.run;
+    const o = {
+      characterId: r.character?.id || 'shen',
+      difficultyId: r.difficulty?.id || 'normal',
+      mode: r.mode || 'normal',
+      isDaily: !!r.isDaily,
+      isEndless: !!r.isEndless,
+      isWeekly: !!r.isWeekly,
+      weekly: r.weekly || null,
+      endlessFloor: r.endlessFloor || 0,
+      realmIndex: r.realmIndex || 0,
+      stageIndex: r.stageIndex || 0,
+      qipai: (r.qipai || []).map(q => (q && q.id) ? q.id : q),
+      xinfa: { ...(r.xinfa || {}) },
+      jinnang: this._jsonClone(r.jinnang || []),
+      dunwu: r.dunwu || 0,
+      runFlags: this._jsonClone(r.runFlags || {}),
+      yueli: r.yueli || 0,
+      zongshiTokens: r.zongshiTokens || 0,
+      totalScore: r.totalScore || 0,
+      stagesCleared: r.stagesCleared || 0,
+      realmsCleared: r.realmsCleared || 0,
+      handLimitBonus: r.handLimitBonus || 0,
+      duanweiLi: r.duanweiLi || 0,
+      stats: {
+        bombs: r.stats?.bombs || 0,
+        flushes: r.stats?.flushes || 0,
+        passes: r.stats?.passes || 0,
+        maxHand: r.stats?.maxHand || 0,
+        maxChain: r.stats?.maxChain || 0,
+        types: this._setToArr(r.stats?.types),
+      },
+      dailySeed: r.dailySeed ?? null,
+      importedBuild: !!r.importedBuild,
+    };
+    return o;
+  }
+
+  deserializeRun(data) {
+    if (!data || typeof data !== 'object') return null;
+    const char = (typeof CHARACTERS !== 'undefined' ? CHARACTERS : [])
+      .find(c => c.id === data.characterId) || (typeof CHARACTERS !== 'undefined' ? CHARACTERS[0] : null);
+    if (!char) return null;
+    const diff = this.getDifficulty(data.difficultyId || 'normal');
+    const qipai = (data.qipai || []).map(q => {
+      const id = typeof q === 'string' ? q : q?.id;
+      if (!id) return null;
+      const full = (typeof QIPAI_POOL !== 'undefined' ? QIPAI_POOL : []).find(x => x.id === id);
+      if (full) return { ...full, ...(typeof q === 'object' ? q : {}) };
+      return typeof q === 'object' ? q : null;
+    }).filter(Boolean);
+
+    const jinnang = (data.jinnang || []).map(j => {
+      if (!j) return null;
+      const full = (typeof JINNANG_POOL !== 'undefined' ? JINNANG_POOL : []).find(x => x.id === j.id);
+      return full ? { ...full, ...j, uid: j.uid || (typeof uid === 'function' ? uid() : String(Math.random())) } : j;
+    }).filter(Boolean);
+
+    return {
+      character: char,
+      difficulty: diff,
+      mode: data.mode || 'normal',
+      isDaily: !!data.isDaily,
+      isEndless: !!data.isEndless,
+      isWeekly: !!data.isWeekly,
+      weekly: data.weekly || null,
+      endlessFloor: data.endlessFloor || 0,
+      realmIndex: data.realmIndex || 0,
+      stageIndex: data.stageIndex || 0,
+      qipai,
+      xinfa: {
+        single: 0, pair: 0, triple: 0, straight: 0, consecutive_pairs: 0,
+        airplane: 0, bomb: 0, rocket: 0,
+        ...(data.xinfa || {}),
+      },
+      jinnang,
+      dunwu: data.dunwu || 0,
+      runFlags: data.runFlags || {},
+      yueli: data.yueli || 0,
+      zongshiTokens: data.zongshiTokens || 0,
+      totalScore: data.totalScore || 0,
+      stagesCleared: data.stagesCleared || 0,
+      realmsCleared: data.realmsCleared || 0,
+      handLimitBonus: data.handLimitBonus || 0,
+      duanweiLi: data.duanweiLi || 0,
+      stats: {
+        bombs: data.stats?.bombs || 0,
+        flushes: data.stats?.flushes || 0,
+        passes: data.stats?.passes || 0,
+        maxHand: data.stats?.maxHand || 0,
+        maxChain: data.stats?.maxChain || 0,
+        types: this._arrToSet(data.stats?.types),
+      },
+      dailySeed: data.dailySeed ?? null,
+      importedBuild: !!data.importedBuild,
+    };
+  }
+
+  serializeBattle() {
+    if (!this.battle) return null;
+    const b = this.battle;
+    const SET_KEYS = ['selectedIds', 'typesPlayed', 'frozenEnemyIds', 'guiyiTypes'];
+    const raw = {};
+    for (const k of Object.keys(b)) {
+      if (SET_KEYS.includes(k)) raw[k] = this._setToArr(b[k]);
+      else raw[k] = b[k];
+    }
+    // boss：尽量存规则表 key，恢复时再挂回完整对象
+    if (b.boss && typeof BOSS_RULES !== 'undefined') {
+      const key = b.boss.id
+        || Object.keys(BOSS_RULES).find(k => BOSS_RULES[k] === b.boss || BOSS_RULES[k]?.name === b.boss.name);
+      if (key) raw.bossId = key;
+    }
+    try {
+      return this._jsonClone(raw);
+    } catch (_) {
+      // 极端情况：丢弃 log 等再试
+      raw.log = (raw.log || []).slice(-40);
+      return this._jsonClone(raw);
+    }
+  }
+
+  deserializeBattle(data) {
+    if (!data || typeof data !== 'object') return null;
+    const b = this._jsonClone(data);
+    b.selectedIds = this._arrToSet(b.selectedIds);
+    b.typesPlayed = this._arrToSet(b.typesPlayed);
+    b.frozenEnemyIds = this._arrToSet(b.frozenEnemyIds);
+    b.guiyiTypes = this._arrToSet(b.guiyiTypes);
+    if (b.bossId && typeof BOSS_RULES !== 'undefined') {
+      b.boss = BOSS_RULES[b.bossId] || b.boss || null;
+    }
+    delete b.bossId;
+    // 恢复手牌冻结标记（部分机关写在卡上）
+    if (Array.isArray(b.playerHand)) {
+      b.playerHand.forEach(c => {
+        if (c && c._frozen == null) c._frozen = false;
+      });
+    }
+    if (!Array.isArray(b.log)) b.log = [];
+    return b;
+  }
+
+  /**
+   * 写入局内存档
+   * @param {string} phase battle|map|shop|result|qipai
+   * @param {object} ui  UI 侧临时状态
+   */
+  saveRun(phase = 'map', ui = {}) {
+    if (!this.run) return false;
+    try {
+      const payload = {
+        v: 1,
+        savedAt: Date.now(),
+        phase: phase || 'map',
+        run: this.serializeRun(),
+        battle: this.battle ? this.serializeBattle() : null,
+        ui: ui && typeof ui === 'object' ? ui : {},
+      };
+      localStorage.setItem(PaiZongGame.RUN_SAVE_KEY, JSON.stringify(payload));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** 仅窥探，不写入 game 状态 */
+  peekRunSave() {
+    try {
+      const s = localStorage.getItem(PaiZongGame.RUN_SAVE_KEY);
+      if (!s) return null;
+      const data = JSON.parse(s);
+      if (!data || data.v !== 1 || !data.run) return null;
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  hasRunSave() {
+    return !!this.peekRunSave();
+  }
+
+  /**
+   * 从 localStorage 恢复 this.run / this.battle
+   * @returns {{ ok:boolean, phase?:string, ui?:object, reason?:string }}
+   */
+  applyRunSave() {
+    const data = this.peekRunSave();
+    if (!data) return { ok: false, reason: '无断点存档' };
+    try {
+      const run = this.deserializeRun(data.run);
+      if (!run) return { ok: false, reason: '论道数据损坏' };
+      this.run = run;
+      this.battle = data.battle ? this.deserializeBattle(data.battle) : null;
+      return { ok: true, phase: data.phase || 'map', ui: data.ui || {}, savedAt: data.savedAt };
+    } catch (e) {
+      return { ok: false, reason: '恢复失败：' + (e.message || '未知') };
+    }
+  }
+
+  clearRunSave() {
+    try {
+      localStorage.removeItem(PaiZongGame.RUN_SAVE_KEY);
+    } catch (_) {}
+  }
+
+  /** 放弃本局：清内存 + 清断点 */
+  abandonRun() {
+    this.run = null;
+    this.battle = null;
+    this.clearRunSave();
+  }
+
+  /** 断点摘要（标题按钮文案） */
+  runSaveSummary() {
+    const data = this.peekRunSave();
+    if (!data?.run) return null;
+    const r = data.run;
+    const char = (typeof CHARACTERS !== 'undefined' ? CHARACTERS : [])
+      .find(c => c.id === r.characterId);
+    const phaseLabel = {
+      battle: '论道中',
+      map: '路图',
+      shop: '藏经阁',
+      result: '结算',
+      qipai: '选奇牌',
+    }[data.phase] || '进行中';
+    let stage = '';
+    if (r.isEndless) stage = `无尽${r.endlessFloor || 1}层`;
+    else stage = `第${(r.stagesCleared || 0) + 1}关`;
+    return {
+      phase: data.phase,
+      phaseLabel,
+      charName: char?.name || '牌客',
+      stage,
+      dunwu: r.dunwu || 0,
+      savedAt: data.savedAt,
+    };
   }
 
   availableYueli() {
@@ -505,6 +768,9 @@ class PaiZongGame {
     };
     this.save();
     this.checkMetaAchievements();
+    // 新开局覆盖旧断点
+    this.battle = null;
+    this.saveRun('map');
     return this.run;
   }
 
@@ -887,6 +1153,7 @@ class PaiZongGame {
       this.run.runFlags.nextQi = 0;
     }
     this.refreshBattleDynamics();
+    this.saveRun('battle');
 
     return this.battle;
   }
@@ -1786,6 +2053,7 @@ class PaiZongGame {
     }
 
     b.turn = 'enemy';
+    this.saveRun('battle');
     return {
       ok: true,
       score: result.score,
@@ -1838,6 +2106,7 @@ class PaiZongGame {
     b.lastPlayer = null;
     b.turn = 'enemy';
     b.turnJiguanUsed = 0;
+    this.saveRun('battle');
     return { ok: true };
   }
 
@@ -1944,6 +2213,7 @@ class PaiZongGame {
       this.log('守关者过牌');
       this.afterEnemyPass();
       if (b.status === 'lost') return { action: 'pass', lost: true, reason: '拖回合失败' };
+      this.saveRun('battle');
       return { action: 'pass' };
     }
 
@@ -2038,6 +2308,7 @@ class PaiZongGame {
     if (b.status === 'won') {
       return { action: 'play', hand: play, score: aiScore, won: true };
     }
+    this.saveRun('battle');
     return { action: 'play', hand: play, score: aiScore };
   }
 
@@ -2590,6 +2861,7 @@ class PaiZongGame {
     this.log(`破境！顿悟+${reward}`);
     b._winReward = reward;
     b._winYueli = yueliGain;
+    this.saveRun('result', { resultWon: true });
     return { ok: true, won: true, reward, yueliGain };
   }
 
@@ -2624,6 +2896,8 @@ class PaiZongGame {
     this.pushRunHistory(false);
     this.save();
     this.log(`失败：${reason} 阅历+${yueli}`);
+    // 失败已结算阅历；断点保留结算屏，回标题时再清
+    this.saveRun('result', { resultWon: false });
     return { ok: true, lost: true, reason, yueli };
   }
 
@@ -2729,9 +3003,13 @@ class PaiZongGame {
         this.run.endlessFloor = 1;
         this.pushRunHistory(true);
         this.save();
+        this.battle = null;
+        this.saveRun('map');
         return { completed: false, enterEndless: true, next: this.getCurrentStage() };
       }
       this.save();
+      this.battle = null;
+      this.saveRun('map');
       return { completed: false, next: this.getCurrentStage() };
     }
 
@@ -2741,6 +3019,8 @@ class PaiZongGame {
     const miles = this.claimEndlessMilestones();
     this.save();
     this.checkMetaAchievements();
+    this.battle = null;
+    this.saveRun('map');
     return { completed: false, endless: true, next: this.getCurrentStage(), milestones: miles };
   }
 

@@ -212,6 +212,184 @@ const UI = {
     });
   },
 
+  // ===== 局内断点 =====
+  /** 收集 UI 侧临时状态并写入 localStorage */
+  persistRun(phase) {
+    if (!game.run || typeof game.saveRun !== 'function') return;
+    const p = phase || this.screen || 'map';
+    // 仅保存论道相关界面
+    const allow = ['battle', 'map', 'shop', 'result', 'qipai'];
+    if (!allow.includes(p)) return;
+    const ui = {
+      shopQipaiIds: (this.shopQipaiChoices || []).map(q => q.id).filter(Boolean),
+      shopAfterWin: !!this._shopAfterWin,
+      stageQipaiKey: this._stageQipaiKey || null,
+      qipaiNext: this._qipaiNext || null,
+      pendingQipaiIds: (this.pendingQipaiChoices || []).map(q => q.id).filter(Boolean),
+      qipaiIsOpening: !!this._qipaiIsOpening,
+      resultWon: p === 'result' ? (game.battle?.status === 'won') : null,
+    };
+    game.saveRun(p, ui);
+  },
+
+  /** 放弃未完成论道 */
+  abandonCurrentRun(confirmMsg) {
+    const msg = confirmMsg || '确定退出本次论道？局内进度将丢失（已结算的阅历保留）。';
+    if (!confirm(msg)) return false;
+    this.aiThinking = false;
+    this.animating = false;
+    this._battleGen = (this._battleGen || 0) + 1;
+    this.shopQipaiChoices = [];
+    this.pendingQipaiChoices = [];
+    this._stageQipaiKey = null;
+    if (typeof game.abandonRun === 'function') game.abandonRun();
+    else {
+      game.run = null;
+      game.battle = null;
+      if (game.clearRunSave) game.clearRunSave();
+    }
+    return true;
+  },
+
+  /** 从断点恢复并进入对应界面 */
+  resumeFromSave() {
+    if (!game.hasRunSave || !game.hasRunSave()) {
+      this.toast('没有可继续的论道');
+      return false;
+    }
+    const r = game.applyRunSave();
+    if (!r.ok) {
+      this.toast(r.reason || '断点恢复失败');
+      if (game.clearRunSave) game.clearRunSave();
+      return false;
+    }
+    const ui = r.ui || {};
+    this._stageQipaiKey = ui.stageQipaiKey || null;
+    this._shopAfterWin = !!ui.shopAfterWin;
+    this._qipaiNext = ui.qipaiNext || 'battle';
+    this._qipaiIsOpening = !!ui.qipaiIsOpening;
+    this.shopQipaiChoices = (ui.shopQipaiIds || [])
+      .map(id => QIPAI_POOL.find(q => q.id === id))
+      .filter(Boolean);
+    this.pendingQipaiChoices = (ui.pendingQipaiIds || [])
+      .map(id => QIPAI_POOL.find(q => q.id === id))
+      .filter(Boolean);
+    this.selectedQipaiId = null;
+    this.aiThinking = false;
+    this.animating = false;
+    this._battleGen = (this._battleGen || 0) + 1;
+    this._hintCardIds = null;
+
+    const phase = r.phase || 'map';
+    this.sfx('click');
+    this.toast('已恢复未竟论道');
+
+    if (phase === 'battle' && game.battle) {
+      if (game.battle.status === 'won') {
+        this.showResult(true, {
+          reward: game.battle._winReward || 0,
+          yueliGain: game.battle._winYueli || 0,
+        });
+      } else if (game.battle.status === 'lost') {
+        this.showResult(false, {
+          reason: game.battle._loseReason || '论道未成',
+          yueli: game.battle._loseYueli || 0,
+        });
+      } else {
+        this.renderBattle();
+        this.showScreen('battle');
+        if (game.battle.turn === 'enemy' && game.battle.status === 'playing') {
+          setTimeout(() => this.runEnemyTurn(), 400);
+        }
+      }
+      return true;
+    }
+    if (phase === 'result' && game.battle) {
+      const won = ui.resultWon != null ? ui.resultWon : game.battle.status === 'won';
+      if (won) {
+        this.showResult(true, {
+          reward: game.battle._winReward || 0,
+          yueliGain: game.battle._winYueli || 0,
+        });
+      } else {
+        this.showResult(false, {
+          reason: game.battle._loseReason || '论道未成',
+          yueli: game.battle._loseYueli || 0,
+        });
+      }
+      return true;
+    }
+    if (phase === 'shop' && game.run) {
+      this.renderShop(!!this._shopAfterWin);
+      return true;
+    }
+    if (phase === 'qipai' && game.run) {
+      this.restoreQipaiSelect();
+      return true;
+    }
+    // map 或兜底
+    if (game.run) {
+      this.renderMap();
+      return true;
+    }
+    this.toast('断点数据不完整');
+    if (game.clearRunSave) game.clearRunSave();
+    return false;
+  },
+
+  /** 恢复奇牌三选一界面 */
+  restoreQipaiSelect() {
+    if (!game.run) {
+      this.renderTitle();
+      return;
+    }
+    const next = this._qipaiNext || 'battle';
+    // 无存档选项则重新抽
+    if (!this.pendingQipaiChoices.length) {
+      this.startQipaiSelect(next);
+      return;
+    }
+    const firstPick = (game.run.stagesCleared || 0) === 0 && (game.run.qipai || []).length === 0;
+    const mustPick = firstPick && next === 'battle';
+    this._qipaiIsOpening = mustPick;
+    this.selectedQipaiId = null;
+
+    this.$('qipai-title').textContent = firstPick
+      ? '开局奇牌 · 选择流派'
+      : (next === 'battle' ? '破境奇缘 · 选一张强化' : '藏经阁奇缘 · 选一张');
+    this.$('qipai-desc').textContent = firstPick
+      ? '奇牌不进入手牌，作为本局被动规则。选好后开始论道。'
+      : (next === 'battle'
+        ? '选一张加入构筑后进入下一关，也可跳过。'
+        : '选择一张奇牌加入构筑，或跳过。');
+
+    const list = this.$('qipai-list');
+    list.innerHTML = '';
+    this.pendingQipaiChoices.forEach(q => {
+      const div = document.createElement('div');
+      div.className = 'qipai-card rarity-' + (q.rarity || 'common');
+      div.style.borderLeftColor = RARITY_COLOR[q.rarity] || '#a0aec0';
+      const frame = (typeof ASSETS !== 'undefined' && ASSETS.frameForRarity) ? ASSETS.frameForRarity(q.rarity) : '';
+      const icon = (typeof ASSETS !== 'undefined' && ASSETS.qipaiIcon) ? ASSETS.qipaiIcon(q, true) : '';
+      if (frame) div.style.backgroundImage = `linear-gradient(180deg,rgba(8,10,14,0.72),rgba(8,10,14,0.88)),url('${frame}')`;
+      div.innerHTML = `
+        ${icon ? `<span class="qipai-pick-icon" style="background-image:url('${icon}')"></span>` : ''}
+        <span class="rarity" style="background:${RARITY_COLOR[q.rarity]}33;color:${RARITY_COLOR[q.rarity]}">${RARITY_LABEL[q.rarity]}</span>
+        <div class="name" style="color:${q.rarity === 'legend' || q.rarity === 'cursed' ? RARITY_COLOR[q.rarity] : 'inherit'}">${q.name}</div>
+        <div class="desc">${q.desc}</div>
+      `;
+      div.onclick = () => {
+        list.querySelectorAll('.qipai-card').forEach(x => x.classList.remove('selected'));
+        div.classList.add('selected');
+        this.selectedQipaiId = q.id;
+      };
+      list.appendChild(div);
+    });
+    this.$('btn-skip-qipai').style.display = mustPick ? 'none' : 'inline-flex';
+    this.showScreen('qipai');
+    this.persistRun('qipai');
+  },
+
   // ===== 标题 =====
   renderTitle() {
     game.refreshCharUnlocks();
@@ -239,6 +417,18 @@ const UI = {
           <div>图鉴 ${seen}/${QIPAI_POOL.length} · 成就 ${ach}/${achTotal}</div>
           <div style="margin-top:4px">无尽里程碑 ${miles}/${totalM} · 奇遇 ${game.meta.eventCount || 0}</div>
         `;
+      }
+    }
+
+    // 断点续玩入口
+    const contBtn = this.$('btn-continue-run');
+    if (contBtn && game.runSaveSummary) {
+      const sum = game.runSaveSummary();
+      if (sum) {
+        contBtn.style.display = 'inline-flex';
+        contBtn.textContent = `继续论道 · ${sum.charName} · ${sum.stage} · ${sum.phaseLabel}`;
+      } else {
+        contBtn.style.display = 'none';
       }
     }
 
@@ -477,6 +667,7 @@ const UI = {
     }
 
     this.showScreen('map');
+    this.persistRun('map');
   },
 
   // ===== 奇牌三选一 =====
@@ -538,6 +729,7 @@ const UI = {
 
     this.$('btn-skip-qipai').style.display = mustPick ? 'none' : 'inline-flex';
     this.showScreen('qipai');
+    this.persistRun('qipai');
   },
 
   routeAfterQipai() {
@@ -598,6 +790,7 @@ const UI = {
     }
     this.renderBattle();
     this.showScreen('battle');
+    this.persistRun('battle');
     // 开局手牌轻入场（只动透明度，避免干扰扇形 transform）
     requestAnimationFrame(() => {
       document.querySelectorAll('.hand-cards .card').forEach((node, i) => {
@@ -2301,6 +2494,7 @@ const UI = {
     if (btnRetry) btnRetry.style.display = won ? 'none' : 'inline-flex';
 
     this.showScreen('result');
+    this.persistRun('result');
   },
 
   resultNext() {
@@ -2309,7 +2503,7 @@ const UI = {
   },
 
   resultRetry() {
-    // 同配置再开一局
+    // 同配置再开一局（先清旧断点）
     const setup = (game.run && game.run.character)
       ? {
           characterId: game.run.character.id,
@@ -2320,6 +2514,12 @@ const UI = {
     if (!setup) {
       this.renderTitle();
       return;
+    }
+    if (typeof game.abandonRun === 'function') game.abandonRun();
+    else {
+      game.run = null;
+      game.battle = null;
+      if (game.clearRunSave) game.clearRunSave();
     }
     this.selectedMode = setup.mode;
     this.selectedDifficulty = setup.difficulty;
@@ -2502,6 +2702,7 @@ const UI = {
     });
 
     this.showScreen('shop');
+    this.persistRun('shop');
     if (game.isTutorialActive && game.isTutorialActive()) {
       setTimeout(() => this.guideShowForScreen('shop'), 300);
     }
@@ -2530,6 +2731,8 @@ const UI = {
     }
     if (adv.completed) {
       this.toast('论道圆满');
+      if (typeof game.abandonRun === 'function') game.abandonRun();
+      else if (game.clearRunSave) game.clearRunSave();
       this.renderTitle();
       return;
     }
@@ -3278,11 +3481,30 @@ function on(id, handler) {
 }
 
 function bindUI() {
-  on('btn-start', () => { UI.sfx('click'); UI.renderModeSelect('normal'); });
-  on('btn-endless', () => { UI.sfx('click'); UI.renderModeSelect('endless'); });
-  on('btn-daily', () => { UI.sfx('click'); UI.renderModeSelect('daily'); });
+  const warnOverwriteRun = () => {
+    if (!game.hasRunSave || !game.hasRunSave()) return true;
+    return confirm('已有未完成的论道断点。开始新局将覆盖该断点，确定？');
+  };
+  on('btn-start', () => {
+    if (!warnOverwriteRun()) return;
+    UI.sfx('click');
+    UI.renderModeSelect('normal');
+  });
+  on('btn-endless', () => {
+    if (!warnOverwriteRun()) return;
+    UI.sfx('click');
+    UI.renderModeSelect('endless');
+  });
+  on('btn-daily', () => {
+    if (!warnOverwriteRun()) return;
+    UI.sfx('click');
+    UI.renderModeSelect('daily');
+  });
   on('btn-weekly', () => { UI.sfx('click'); UI.renderWeekly(); });
-  on('btn-retry-last', () => UI.retryLastSetup());
+  on('btn-retry-last', () => {
+    if (!warnOverwriteRun()) return;
+    UI.retryLastSetup();
+  });
   on('btn-tutorial', () => { UI.sfx('click'); UI.startTutorial(true); });
   on('guide-next', () => UI.guideNext());
   on('guide-skip', () => UI.guideSkip());
@@ -3300,7 +3522,11 @@ function bindUI() {
     }
   });
   on('btn-weekly-back', () => UI.renderTitle());
-  on('btn-weekly-start', () => { UI.sfx('click'); UI.renderModeSelect('weekly'); });
+  on('btn-weekly-start', () => {
+    if (!warnOverwriteRun()) return;
+    UI.sfx('click');
+    UI.renderModeSelect('weekly');
+  });
   on('btn-rank', () => { UI.sfx('click'); UI.renderRank(); });
   on('btn-rank-back', () => UI.renderTitle());
   on('btn-import', () => UI.importBuildFlow());
@@ -3327,9 +3553,7 @@ function bindUI() {
   on('btn-char-back', () => UI.renderModeSelect(UI.selectedMode || 'normal'));
   on('btn-map-start', () => { UI.sfx('click'); UI.startFromMap(); });
   on('btn-map-back', () => {
-    if (confirm('退出本次论道？局内进度将丢失（阅历已结算部分保留）。')) {
-      game.run = null;
-      game.battle = null;
+    if (UI.abandonCurrentRun('退出本次论道？局内进度将丢失（阅历已结算部分保留）。')) {
       UI.renderTitle();
     }
   });
@@ -3346,19 +3570,27 @@ function bindUI() {
   on('btn-result-shop', () => UI.renderShop(true));
   on('btn-result-retry', () => UI.resultRetry());
   on('btn-result-home', () => {
-    // 回标题时保留 run 可再进商店？失败/胜利后一般清局；阅历已写入 meta
-    if (UI.screen === 'result' && !game.battle) {
-      /* keep */
+    // 失败回标题：本局已结束，清断点；胜利一般走藏经阁，若直接回也清
+    if (game.battle?.status === 'lost' || game.battle?.status === 'won') {
+      if (typeof game.abandonRun === 'function') game.abandonRun();
+      else {
+        game.run = null;
+        game.battle = null;
+        if (game.clearRunSave) game.clearRunSave();
+      }
+      UI.shopQipaiChoices = [];
     }
     UI.renderTitle();
   });
   on('btn-shop-leave', () => UI.leaveShop());
   on('btn-battle-menu', () => {
-    if (confirm('确定退出本局？未结算进度将丢失。')) {
-      game.run = null;
-      game.battle = null;
+    if (UI.abandonCurrentRun('确定退出本局？未结算进度将丢失。')) {
       UI.renderTitle();
     }
+  });
+  on('btn-continue-run', () => {
+    UI.sfx('click');
+    UI.resumeFromSave();
   });
   on('btn-copy-share', () => {
     const code = UI._lastShare || game.exportShareCode();
@@ -3440,22 +3672,41 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof preloadAssets === 'function') preloadAssets();
   UI.renderTitle();
 
+  // 刷新后有断点：询问是否继续
+  if (game.hasRunSave && game.hasRunSave()) {
+    const sum = game.runSaveSummary ? game.runSaveSummary() : null;
+    const tip = sum
+      ? `检测到未完成的论道：${sum.charName} · ${sum.stage} · ${sum.phaseLabel}\n是否继续？\n\n选「取消」可稍后点标题「继续论道」，或放弃本局。`
+      : '检测到未完成的论道，是否继续？';
+    // 延迟一帧，避免挡住标题渲染
+    setTimeout(() => {
+      if (!game.hasRunSave || !game.hasRunSave()) return;
+      const go = confirm(tip);
+      if (go) UI.resumeFromSave();
+      else {
+        // 再问是否放弃
+        const drop = confirm('要放弃这局未完成的论道吗？\n选「取消」将保留断点，可稍后继续。');
+        if (drop) {
+          if (typeof game.abandonRun === 'function') game.abandonRun();
+          else if (game.clearRunSave) game.clearRunSave();
+          UI.renderTitle();
+          UI.toast('已放弃未竟论道');
+        }
+      }
+    }, 360);
+  }
+
   document.querySelectorAll('[data-nav]').forEach(btn => {
     btn.onclick = () => {
       const n = btn.getAttribute('data-nav');
-      // 论道中途离开 hub：先确认，避免静默丢局
+      // 论道中途离开 hub：先确认；离开前先落盘断点，再决定是否放弃
       const inRun = !!(game.run && UI.screen !== 'title' && UI.screen !== 'help');
       const leaveRunScreens = ['weekly', 'rank', 'codex', 'achieve', 'meta', 'help'];
       if (inRun && leaveRunScreens.includes(n)) {
-        const ok = confirm('离开当前界面？\n若正在论道中，未结算的局内进度将丢失（已结算阅历保留）。');
+        UI.persistRun(UI.screen);
+        const ok = confirm('离开当前界面？\n未结算进度已自动保存，可从标题「继续论道」恢复。\n若要放弃本局请点确定后再在标题选择放弃，或直接从战斗/路图退出。');
         if (!ok) return;
-        if (['battle', 'map', 'shop', 'result', 'char', 'mode', 'qipai'].includes(UI.screen)) {
-          // 明确放弃本局
-          if (UI.screen === 'battle' || UI.screen === 'map' || UI.screen === 'shop') {
-            game.run = null;
-            game.battle = null;
-          }
-        }
+        // 浏览 hub 时保留 run + 断点，不强制清局
       }
       UI.sfx('click');
       if (n === 'help') UI.renderHelp();
@@ -3473,6 +3724,16 @@ document.addEventListener('DOMContentLoaded', () => {
   on('btn-save-modal-close', () => UI.hideSaveModal());
   on('btn-save-modal-copy', () => UI.copySaveModalText());
   on('btn-save-modal-apply', () => UI.applySaveModalImport());
+
+  // 切后台 / 关闭页面前再落一次盘
+  const flushRun = () => {
+    if (game.run) UI.persistRun(UI.screen);
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushRun();
+  });
+  window.addEventListener('pagehide', flushRun);
+  window.addEventListener('beforeunload', flushRun);
 
   // 首次点击解锁 AudioContext
   document.body.addEventListener('click', () => {

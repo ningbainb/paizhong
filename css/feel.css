@@ -1268,6 +1268,17 @@
   padding: 6px 12px !important;
   opacity: 0.9;
 }
+.title-cta-continue {
+  font-size: 13px !important;
+  padding: 10px 16px !important;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 360px;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(56, 178, 172, 0.35), rgba(26, 100, 96, 0.45)) !important;
+  border-color: rgba(72, 187, 180, 0.55) !important;
+  box-shadow: 0 0 18px rgba(56, 178, 172, 0.18);
+}
 
 /* 模式卡片 */
 .title-modes {
