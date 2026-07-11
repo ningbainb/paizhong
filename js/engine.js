@@ -731,24 +731,30 @@ function pickQipaiChoicesFromPool(pool, ownedIds, count, preferCursed = false) {
  */
 function aiCardControlValue(hand) {
   if (!hand) return 0;
-  let v = hand.maxOrder * 1.2 + hand.cards.length * 0.5;
-  if (hand.type === 'bomb') v += 40 + hand.maxOrder;
-  if (hand.type === 'rocket') v += 80;
-  if (hand.type === 'airplane') v += 12;
-  if (hand.type === 'consecutive_pairs') v += 8;
-  if (hand.type === 'straight') v += 6 + Math.max(0, hand.length - 5) * 1.5;
-  if (hand.type === 'triple') v += 4;
+  let v = hand.maxOrder * 1.35 + hand.cards.length * 0.55;
+  if (hand.type === 'bomb') v += 42 + hand.maxOrder;
+  if (hand.type === 'rocket') v += 85;
+  if (hand.type === 'airplane') v += 14;
+  if (hand.type === 'consecutive_pairs') v += 10;
+  if (hand.type === 'straight') v += 7 + Math.max(0, hand.length - 5) * 1.8;
+  if (hand.type === 'triple' || hand.type === 'triple_one' || hand.type === 'triple_two') v += 5;
   return v;
 }
 
 /**
- * 估算出牌后对「破境进度」的贡献（与游戏内 AI 计分同向）
+ * 估算出牌后对「破境进度」的贡献
  */
 function aiEstimateScore(hand, ctx = {}) {
   if (!hand) return 0;
-  const rate = ctx.aiRate != null ? ctx.aiRate : 0.5;
-  let s = hand.liSum * hand.baseQi * rate;
-  if (hand.type === 'bomb' || hand.type === 'rocket') s *= 1.25;
+  const rate = ctx.aiRate != null ? ctx.aiRate : 0.55;
+  let s = (hand.liSum || 0) * (hand.baseQi || 1) * rate;
+  // 同花粗略加成（若卡上有 suit）
+  if (hand.cards && hand.cards.length >= 2) {
+    const s0 = hand.cards[0].suit;
+    if (s0 && hand.cards.every(c => c.suit === s0 || c.joker)) s *= 1.12;
+  }
+  if (hand.type === 'bomb' || hand.type === 'rocket') s *= 1.32;
+  if (hand.type === 'straight' || hand.type === 'consecutive_pairs' || hand.type === 'airplane') s *= 1.08;
   return s;
 }
 
@@ -758,33 +764,35 @@ function aiEstimateScore(hand, ctx = {}) {
 function aiRemainingStructure(handCards, play) {
   const used = new Set(play.cards.map(c => c.id));
   const left = handCards.filter(c => !used.has(c.id));
-  if (!left.length) return 0;
+  if (!left.length) return 4; // 打空手牌可重整，略加分
   const freePlays = enumeratePlays(left, null);
-  if (!freePlays.length) return -5;
-  // 剩余可出牌型种类 + 炸弹库存
+  if (!freePlays.length) return -8;
   let bombs = 0;
   let best = 0;
+  let maxCtrl = 0;
   const types = new Set();
   for (const p of freePlays) {
     types.add(p.type);
     if (p.type === 'bomb' || p.type === 'rocket') bombs++;
     best = Math.max(best, p.baseQi * p.liSum);
+    maxCtrl = Math.max(maxCtrl, p.maxOrder || 0);
   }
-  return types.size * 2 + bombs * 8 + Math.min(20, best / 20) - (left.length > 14 ? 3 : 0);
+  // 留有大控制牌 / 炸弹更利于后手压制
+  return types.size * 2.2 + bombs * 10 + Math.min(24, best / 18) + maxCtrl * 0.15
+    - (left.length > 14 ? 4 : 0)
+    - (left.length <= 3 && bombs === 0 ? 3 : 0);
 }
 
 /**
- * 守关者 AI：根据局面打分选牌
+ * 守关者 AI：局面启发式 + 抢分/打断/留牌
  * ctx: {
- *   strategy: normal|block|aggressive|defend,
- *   freePlay: boolean,
- *   playerScore, playerThreshold, enemyScore, enemyThreshold,
+ *   strategy: normal|block|aggressive|defend|finish,
+ *   freePlay, playerScore, playerThreshold, enemyScore, enemyThreshold,
  *   playerChain, playerHandCount, enemyHandCount,
- *   round, maxSoftRound, difficulty, aiRate
+ *   round, maxSoftRound, difficulty, aiRate, stageType
  * }
  */
 function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
-  // 兼容旧调用：aiChoosePlay(hand, last, 'aggressive')
   let ctx = {};
   if (typeof strategyOrCtx === 'string') {
     ctx = { strategy: strategyOrCtx };
@@ -802,133 +810,206 @@ function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
   const eTh = Math.max(1, ctx.enemyThreshold || 1000);
   const pProg = pScore / pTh;
   const eProg = eScore / eTh;
-  const playerDanger = pProg >= 0.75 || (pTh - pScore) < 200;
-  const playerNear = pProg >= 0.55;
-  const enemyBehind = eProg + 0.12 < pProg;
-  const enemyNearWin = eProg >= 0.7;
+  const needEnemy = Math.max(0, eTh - eScore);
+  const needPlayer = Math.max(0, pTh - pScore);
+  const playerDanger = pProg >= 0.72 || needPlayer < Math.max(100, pTh * 0.1);
+  const playerNear = pProg >= 0.52;
+  const enemyBehind = eProg + 0.1 < pProg;
+  const enemyNearWin = eProg >= 0.68 || needEnemy < Math.max(140, eTh * 0.12);
   const chain = ctx.playerChain || 0;
   const round = ctx.round || 1;
-  const lateGame = round > (ctx.maxSoftRound || 24) * 0.55;
+  const maxR = ctx.maxSoftRound || 24;
+  const lateGame = round > maxR * 0.5;
+  const endGame = round > maxR * 0.72;
   const handCount = handCards.length;
   const diff = ctx.difficulty || 'normal';
+  const isBoss = ctx.stageType === 'zong' || ctx.stageType === 'an';
 
-  // 难度影响：更敢炸、更压连
-  const bombBias = diff === 'legend' ? 18 : diff === 'master' ? 10 : diff === 'hard' ? 4 : 0;
-  const blockBias = strategy === 'block' || chain >= 2 ? 15 + chain * 6 : 0;
+  const bombBias = diff === 'legend' ? 28 : diff === 'master' ? 18 : diff === 'hard' ? 10 : 3;
+  const skillBias = diff === 'legend' ? 1.25 : diff === 'master' ? 1.15 : diff === 'hard' ? 1.08 : 1.0;
+  const blockBias = (strategy === 'block' || chain >= 2) ? 22 + chain * 8 : 0;
+  const gainWeight = freePlay
+    ? (1.65 * skillBias + (strategy === 'aggressive' || strategy === 'finish' ? 0.45 : 0))
+    : (0.55 * skillBias + (strategy === 'aggressive' ? 0.25 : 0));
+
+  // 先找「这一手就能破境」的候选，强制优先
+  let finishPlay = null;
+  let finishGain = -1;
+  for (const play of plays) {
+    const g = aiEstimateScore(play, ctx);
+    if (g >= needEnemy * 0.92 && g > finishGain) {
+      // 能破时优先非炸；仅当非炸够不到才用炸
+      const isBomb = play.type === 'bomb' || play.type === 'rocket';
+      if (!finishPlay) {
+        finishPlay = play;
+        finishGain = g;
+      } else {
+        const wasBomb = finishPlay.type === 'bomb' || finishPlay.type === 'rocket';
+        if (wasBomb && !isBomb) {
+          finishPlay = play;
+          finishGain = g;
+        } else if (wasBomb === isBomb && g > finishGain) {
+          finishPlay = play;
+          finishGain = g;
+        }
+      }
+    }
+  }
+  if (finishPlay && (enemyNearWin || strategy === 'finish' || strategy === 'aggressive' || endGame || diff !== 'normal')) {
+    return finishPlay;
+  }
+  // 常道：有把握也直接破
+  if (finishPlay && finishGain >= needEnemy) return finishPlay;
 
   let best = null;
   let bestScore = -1e9;
+  // 记录 top 候选，终局再比一次「破境余量」
+  const ranked = [];
 
   for (const play of plays) {
     const isBomb = play.type === 'bomb' || play.type === 'rocket';
     const control = aiCardControlValue(play);
     const gain = aiEstimateScore(play, ctx);
     const remain = aiRemainingStructure(handCards, play);
-
+    const gap = (!freePlay && lastHand) ? (play.maxOrder - (lastHand.maxOrder || 0)) : 0;
     let score = 0;
 
+    // —— 抢分核心：收益权重显著提高 ——
+    score += gain * gainWeight;
+
     if (freePlay) {
-      // 自由出牌：优先「中高收益组合」，保留炸弹与最大单牌控制
-      score += gain * 1.4;
-      score += play.baseQi * 8;
-      score += Math.min(play.cards.length, 8) * 1.5;
+      score += play.baseQi * 10;
+      score += Math.min(play.cards.length, 10) * 1.8;
 
-      // 长顺/连对/飞机在自由时很有价值（得分高）
-      if (play.type === 'straight') score += 12 + (play.length - 5) * 3;
-      if (play.type === 'consecutive_pairs') score += 14;
-      if (play.type === 'airplane') score += 16;
-      if (play.type === 'triple') score += 6;
-      if (play.type === 'pair') score += 3;
+      if (play.type === 'straight') score += 16 + (play.length - 5) * 4;
+      if (play.type === 'consecutive_pairs') score += 18;
+      if (play.type === 'airplane') score += 20;
+      if (play.type === 'triple' || play.type === 'triple_one' || play.type === 'triple_two') score += 9;
+      if (play.type === 'pair') score += 4;
 
-      // 自由时尽量不出炸弹，除非落后或终局抢分
+      // 接近破境时全力灌分
+      if (enemyNearWin) score += gain * 0.9 + 25;
+      if (needEnemy > 0 && gain >= needEnemy * 0.45) score += 18;
+      if (needEnemy > 0 && gain >= needEnemy * 0.7) score += 28;
+
+      // 炸弹：默认留，落后/玩家危险/终局才果断
       if (isBomb) {
-        score -= 55 - bombBias;
-        if (enemyBehind || enemyNearWin || lateGame) score += 30 + bombBias;
-        if (playerDanger) score += 20;
+        score -= 48 - bombBias;
+        if (enemyBehind || enemyNearWin || lateGame || strategy === 'finish') score += 38 + bombBias;
+        if (playerDanger) score += 32 + bombBias;
+        if (strategy === 'aggressive') score += 22;
+        if (play.type === 'rocket' && !playerDanger && !enemyNearWin) score -= 8;
       }
 
-      // 避免一上来就甩最大单/对，留作压制
+      // 开局保留顶大单/对，中后期可打
       if ((play.type === 'single' || play.type === 'pair') && play.maxOrder >= 14) {
-        score -= 10;
+        score -= lateGame || enemyBehind ? 2 : 12;
       }
-      // 牌少时积极清牌拿分
-      if (handCount <= 6) score += gain * 0.5 + 8;
-      // 剩余结构
-      score += remain * 0.8;
+      if (handCount <= 7) score += gain * 0.65 + 12;
+      if (handCount <= 4) score += gain * 0.4 + 10;
+      score += remain * 1.05;
     } else {
-      // 跟牌：默认最小代价压制
-      const overpay = control; // 用大牌压小牌代价高
-      score += 40 - overpay * 0.9;
-      score += gain * 0.35;
+      // 跟牌：最小有效压制 + 打断 + 必要用炸
+      const gap = lastHand ? (play.maxOrder - (lastHand.maxOrder || 0)) : 0;
+      score += 48 - control * 0.85;
+      score += gain * 0.55;
 
-      // 刚好能压的小牌加分（巧压）
       if (!isBomb && lastHand) {
-        const gap = play.maxOrder - (lastHand.maxOrder || 0);
-        score += (20 - play.maxOrder) * 0.8;
+        score += (20 - play.maxOrder) * 0.85;
         score += (8 - Math.min(play.cards.length, 8));
-        // 刚压过 1～3 阶更优，浪费大牌扣分
-        if (gap >= 1 && gap <= 3) score += 12;
-        else if (gap >= 6) score -= 8;
+        if (gap >= 1 && gap <= 3) score += 16; // 巧压
+        else if (gap === 4 || gap === 5) score += 4;
+        else if (gap >= 7) score -= 12; // 大材小用
       } else if (!isBomb) {
-        score += (20 - play.maxOrder) * 0.8;
-        score += (8 - Math.min(play.cards.length, 8));
+        score += (20 - play.maxOrder) * 0.85;
       }
 
-      // 打断玩家连压
+      // 打断连压：强势加分
+      if (chain >= 1) score += 6 + chain * 4;
       if (chain >= 2 && !isBomb) {
         score += blockBias;
-        // 用稍大的牌打断，不必最小
-        if (play.maxOrder >= 10) score += 6;
+        if (play.maxOrder >= 9) score += 8;
       }
-      if (chain >= 3) score += 12;
-      if (chain >= 5) score += 10; // 玩家长连必须打断
+      if (chain >= 3) score += 18;
+      if (chain >= 4) score += 14;
+      // 用炸弹打断超长连
+      if (chain >= 3 && isBomb) score += 35 + bombBias;
 
-      // 炸弹：仅在必要时
       if (isBomb) {
-        score -= 70 - bombBias;
-        // 没有非炸手段时 enumerate 里若只有炸，自然会选
+        score -= 62 - bombBias;
         const hasNonBomb = plays.some(p => p.type !== 'bomb' && p.type !== 'rocket');
-        if (!hasNonBomb) score += 100;
-        // 玩家要破境 / AI 需要抢进度 / 策略 aggressive
-        if (playerDanger) score += 45 + bombBias;
-        else if (playerNear && enemyBehind) score += 25;
-        if (strategy === 'aggressive') score += 20 + bombBias;
-        if (lateGame && enemyBehind) score += 18;
-        // 火箭更珍贵
-        if (play.type === 'rocket') score -= 12;
+        if (!hasNonBomb) score += 120;
+        if (playerDanger) score += 55 + bombBias;
+        else if (playerNear && enemyBehind) score += 32;
+        if (strategy === 'aggressive' || strategy === 'finish') score += 28 + bombBias;
+        if (lateGame && enemyBehind) score += 22;
+        if (play.type === 'rocket') score -= (playerDanger || endGame) ? 4 : 14;
       }
 
-      // 跟牌后剩余结构
-      score += remain * 0.6;
-
-      // 玩家手牌很少时，加大压制力度
-      if ((ctx.playerHandCount || 10) <= 5 && !isBomb) score += 8;
+      score += remain * 0.75;
+      if ((ctx.playerHandCount || 10) <= 6 && !isBomb) score += 12;
+      if ((ctx.playerHandCount || 10) <= 4) score += 10;
     }
 
-    // 难度：宗师/传说更偏向高收益与阻断
+    // 难度与关卡类型
+    if (diff === 'hard' || diff === 'master' || diff === 'legend') {
+      if (!freePlay && chain >= 1) score += 8;
+      if (freePlay && play.baseQi >= 2.0) score += 8;
+      if (enemyBehind) score += gain * 0.15;
+    }
     if (diff === 'master' || diff === 'legend') {
-      if (!freePlay && chain >= 1) score += 5;
-      if (freePlay && play.baseQi >= 2.2) score += 6;
+      if (playerNear) score += 10;
+      if (!freePlay && gap >= 1 && gap <= 2) score += 6;
+    }
+    if (isBoss) {
+      score += gain * 0.12;
+      if (chain >= 2) score += 8;
     }
 
-    // 轻微随机，避免完全可预测（幅度随难度减小）
-    const jitter = diff === 'legend' ? 2 : diff === 'master' ? 4 : 7;
+    // 策略微调
+    if (strategy === 'block' && !freePlay) score += 12;
+    if (strategy === 'aggressive') score += gain * 0.2 + 6;
+    if (strategy === 'finish') score += gain * 0.55 + 20;
+    if (strategy === 'defend' && !isBomb) score += remain * 0.4;
+
+    // 随机性：高难几乎确定
+    const jitter = diff === 'legend' ? 1.2 : diff === 'master' ? 2.5 : diff === 'hard' ? 4 : 6.5;
     score += (Math.random() - 0.5) * jitter;
 
+    ranked.push({ play, score, gain, isBomb });
     if (score > bestScore) {
       bestScore = score;
       best = play;
     }
   }
 
-  // 极端：可选过牌（仅跟牌且压代价过大、且玩家不危险时）
-  // 由上层决定是否允许 pass；这里若全是高代价炸弹且玩家不危险，可返回 null 让上层过牌
+  // 终局二次裁决：在 top 候选里选更接近破境的
+  if (ranked.length >= 2 && (enemyNearWin || endGame || strategy === 'finish' || strategy === 'aggressive')) {
+    ranked.sort((a, b) => b.score - a.score);
+    const top = ranked.slice(0, Math.min(5, ranked.length));
+    let pick = top[0];
+    for (const c of top) {
+      // 能破境者优先
+      if (c.gain >= needEnemy && pick.gain < needEnemy) pick = c;
+      else if (c.gain >= needEnemy && pick.gain >= needEnemy) {
+        // 都能破：非炸优先，其次浪费少
+        if (pick.isBomb && !c.isBomb) pick = c;
+        else if (pick.isBomb === c.isBomb && c.gain < pick.gain) pick = c;
+      } else if (c.gain < needEnemy && pick.gain < needEnemy) {
+        // 都不能破：更接近破境的
+        if (c.gain > pick.gain + 8) pick = c;
+      }
+    }
+    best = pick.play;
+  }
+
+  // 仅炸能压：高难更少无谓过牌
   if (!freePlay && best) {
     const isBomb = best.type === 'bomb' || best.type === 'rocket';
     const hasNonBomb = plays.some(p => p.type !== 'bomb' && p.type !== 'rocket');
-    if (isBomb && !hasNonBomb && !playerDanger && !playerNear && !lateGame && strategy !== 'aggressive') {
-      // 30% 硬扛不炸，给玩家过一轮（增加博弈）
-      if (Math.random() < (diff === 'normal' ? 0.35 : 0.15)) return null;
+    if (isBomb && !hasNonBomb && !playerDanger && !playerNear && !lateGame && strategy !== 'aggressive' && strategy !== 'finish') {
+      const passChance = diff === 'legend' ? 0.04 : diff === 'master' ? 0.08 : diff === 'hard' ? 0.12 : 0.22;
+      if (Math.random() < passChance) return null;
     }
   }
 

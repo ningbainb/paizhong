@@ -1874,20 +1874,33 @@ class PaiZongGame {
     const last = freePlay ? null : b.lastHand;
 
     const diff = this.run.difficulty;
-    const aiRate = (0.42 + (this.run.realmIndex || 0) * 0.05) * diff.enemy * (b.enemyBoost || 1);
+    const realm = this.run.realmIndex || 0;
+    const stageBoost = b.stageType === 'zong' ? 1.12 : b.stageType === 'an' ? 1.06 : 1;
+    // 基础输出率：整体抬高，并随境界/难度爬升
+    const baseRate = 0.52 + realm * 0.055 + Math.min(0.12, (b.round || 1) * 0.008);
+    const aiRate = baseRate * (diff.enemy || 1) * (b.enemyBoost || 1) * stageBoost;
 
-    // 策略：连压打断 / 玩家危急强攻 / 落后抢分 / 常规
+    // 策略：打断 / 强攻 / 收官 / 防守
     let strategy = 'normal';
     const pProg = b.playerScore / Math.max(1, b.threshold);
     const eProg = b.enemyScore / Math.max(1, b.enemyThreshold);
-    const playerNearClear = (b.threshold - b.playerScore) < Math.max(120, b.threshold * 0.12);
+    const needE = Math.max(0, b.enemyThreshold - b.enemyScore);
+    const playerNearClear = (b.threshold - b.playerScore) < Math.max(100, b.threshold * 0.11);
+    const enemyCanFinishSoon = needE < Math.max(160, b.enemyThreshold * 0.14);
+
     if (b.playerChain >= 2) strategy = 'block';
-    if (pProg >= 0.68 || playerNearClear) strategy = 'aggressive';
-    if (eProg + 0.12 < pProg && b.round > 6) strategy = 'aggressive';
     if (diff.id === 'legend' && b.playerChain >= 1) strategy = 'block';
-    if (diff.id === 'master' && b.playerChain >= 2) strategy = 'block';
-    // 终局回合：守关者全力抢分
-    if (b.round > (b.maxSoftRound || 24) * 0.7) strategy = 'aggressive';
+    if (diff.id === 'master' && b.playerChain >= 1) strategy = 'block';
+    if (diff.id === 'hard' && b.playerChain >= 2) strategy = 'block';
+
+    if (pProg >= 0.62 || playerNearClear) strategy = 'aggressive';
+    if (eProg + 0.1 < pProg && b.round > 4) strategy = 'aggressive';
+    if (b.round > (b.maxSoftRound || 24) * 0.55) strategy = 'aggressive';
+    // 接近破境：收官模式
+    if (enemyCanFinishSoon || eProg >= 0.7) strategy = 'finish';
+    if (pProg < 0.4 && eProg > pProg + 0.15 && b.playerChain < 2 && !enemyCanFinishSoon) {
+      strategy = 'defend';
+    }
 
     const aiCtx = {
       strategy,
@@ -1903,16 +1916,25 @@ class PaiZongGame {
       maxSoftRound: b.maxSoftRound,
       difficulty: diff.id,
       aiRate,
+      stageType: b.stageType,
     };
 
     let play = aiChoosePlay(usable, last, aiCtx);
-    // 中后期若选择过牌但其实有牌，再以激进策略重算一次
+    // 有牌却过：高难几乎不允许，强制再以强攻/收官算一次
     if (!play && !freePlay && usable.length) {
-      play = aiChoosePlay(usable, last, { ...aiCtx, strategy: 'aggressive' });
+      const force = (diff.id === 'normal') ? 'aggressive' : 'finish';
+      play = aiChoosePlay(usable, last, { ...aiCtx, strategy: force });
     }
-    // 自由出牌却空：兜底随便出最小
+    // 自由出牌必须出
     if (!play && freePlay && usable.length) {
-      play = aiChoosePlay(usable, null, { ...aiCtx, strategy: 'normal', freePlay: true });
+      play = aiChoosePlay(usable, null, { ...aiCtx, strategy: strategy === 'defend' ? 'aggressive' : strategy, freePlay: true });
+    }
+    // 最后兜底：最大收益一手
+    if (!play && usable.length) {
+      const pool = enumeratePlays(usable, freePlay ? null : last);
+      if (pool.length) {
+        play = pool.slice().sort((a, c) => (c.liSum * c.baseQi) - (a.liSum * a.baseQi))[0];
+      }
     }
 
     if (!play) {
@@ -1927,11 +1949,29 @@ class PaiZongGame {
     if (!(b.frozenEnemyIds instanceof Set)) b.frozenEnemyIds = new Set();
     b.frozenEnemyIds.clear();
 
+    // 得分：与选型估分同向，并叠加局势加成
     let aiScore = Math.floor(play.liSum * play.baseQi * aiRate);
-    if (b.round > 16) aiScore = Math.floor(aiScore * 1.1);
-    if (play.type === 'bomb' || play.type === 'rocket') aiScore = Math.floor(aiScore * 1.25);
-    // 连压打断成功时略增压力
-    if (b.playerChain >= 2 && strategy === 'block') aiScore = Math.floor(aiScore * 1.08);
+    if (b.round > 12) aiScore = Math.floor(aiScore * 1.08);
+    if (b.round > 18) aiScore = Math.floor(aiScore * 1.06);
+    if (play.type === 'bomb' || play.type === 'rocket') aiScore = Math.floor(aiScore * 1.28);
+    if (play.type === 'straight' || play.type === 'consecutive_pairs' || play.type === 'airplane') {
+      aiScore = Math.floor(aiScore * 1.06);
+    }
+    // 同花粗略
+    if (play.cards && play.cards.length >= 3) {
+      const s0 = play.cards[0].suit;
+      if (s0 && play.cards.every(c => c.suit === s0 || c.joker)) aiScore = Math.floor(aiScore * 1.1);
+    }
+    if (b.playerChain >= 2 && (strategy === 'block' || strategy === 'aggressive')) {
+      aiScore = Math.floor(aiScore * 1.1);
+    }
+    if (strategy === 'finish') aiScore = Math.floor(aiScore * 1.08);
+    // 暗局/宗主略强
+    if (b.stageType === 'zong') aiScore = Math.floor(aiScore * 1.06);
+    if (b.stageType === 'an') aiScore = Math.floor(aiScore * 1.03);
+    // 连压中的守关者（敌方 chain）
+    if ((b.enemyChain || 0) >= 1) aiScore = Math.floor(aiScore * (1 + Math.min(0.12, b.enemyChain * 0.04)));
+    aiScore = Math.max(1, aiScore);
     b.enemyScore += aiScore;
     b.lastHand = play;
     b.lastPlayer = 'enemy';
