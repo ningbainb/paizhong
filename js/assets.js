@@ -279,23 +279,59 @@ const ASSETS = {
   },
 };
 
-function preloadAssets() {
+/** 首屏关键资源：壳层 + 标题 + 常用 UI */
+function preloadAssetsCritical() {
+  const ui = ASSETS.ui || {};
   const urls = [
     ...Object.values(ASSETS.shell || {}),
-    ...Object.values(ASSETS.ui),
-    ...Object.values(ASSETS.fx),
-    ...Object.values(ASSETS.icons),
-    ...Object.values(ASSETS.hands),
-    ...Object.values(ASSETS.xinfa),
-    ...Object.values(ASSETS.diff),
-    ...Object.values(ASSETS.sects),
-    ...Object.values(ASSETS.chars),
-    ...Object.values(ASSETS.achieve),
-    ...Object.values(ASSETS.qipai || {}),
-  ];
-  // 壳层优先预载，避免闪白
+    ui.titleBg,
+    ui.seal,
+    ui.cardBack,
+    ui.tableFelt,
+    ui.modeBg,
+    ui.charBg,
+    ...(Object.values(ASSETS.sects || {})),
+    ...(Object.values(ASSETS.diff || {})),
+    ASSETS.icons?.play,
+    ASSETS.icons?.pass,
+    ASSETS.icons?.hint,
+  ].filter(Boolean);
   urls.forEach(src => {
     const img = new Image();
     img.src = src;
   });
+}
+
+/** 次要资源：战斗/图鉴/成就，空闲时加载 */
+function preloadAssetsSecondary() {
+  const urls = [
+    ...Object.values(ASSETS.fx || {}),
+    ...Object.values(ASSETS.icons || {}),
+    ...Object.values(ASSETS.hands || {}),
+    ...Object.values(ASSETS.xinfa || {}),
+    ...Object.values(ASSETS.chars || {}),
+    ...Object.values(ASSETS.achieve || {}),
+    ...Object.values(ASSETS.qipai || {}),
+    ASSETS.ui?.shopBg,
+    ASSETS.ui?.mapBg,
+    ASSETS.ui?.codexBg,
+    ASSETS.ui?.metaBg,
+    ASSETS.ui?.battleBg,
+  ].filter(Boolean);
+  const load = () => {
+    urls.forEach(src => {
+      const img = new Image();
+      img.src = src;
+    });
+  };
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(load, { timeout: 2500 });
+  } else {
+    setTimeout(load, 600);
+  }
+}
+
+function preloadAssets() {
+  preloadAssetsCritical();
+  preloadAssetsSecondary();
 }

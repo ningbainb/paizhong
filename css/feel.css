@@ -1544,6 +1544,87 @@
   }
 }
 
+/* ===== 存档弹层 ===== */
+.save-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 940;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.68);
+}
+.save-modal-overlay.show {
+  display: flex;
+}
+.save-modal-card {
+  width: min(520px, 96vw);
+  max-height: min(88vh, 640px);
+  overflow: auto;
+  padding: 20px 18px 16px;
+  border-radius: 16px;
+  background: rgba(12, 14, 20, 0.98);
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.55);
+}
+.save-modal-card h3 {
+  margin: 0 0 8px;
+  font-family: var(--display, serif);
+  color: var(--gold-light, #f0d78c);
+  letter-spacing: 2px;
+}
+.save-modal-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted, #9aa4b2);
+}
+.save-modal-text {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 180px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+  color: #d8dee8;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.save-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* 窄屏顶栏可横滑 */
+@media (max-width: 900px) {
+  .app-header {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .header-nav {
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    gap: 6px;
+    padding-bottom: 2px;
+  }
+  .header-nav .nav-link {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
 /* 减少动态偏好 */
 @media (prefers-reduced-motion: reduce) {
   .hand-cards .card,

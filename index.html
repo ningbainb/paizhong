@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0a0c10" />
+  <meta name="description" content="牌宗：斗地主式压牌 + 分数破境的单人论道。奇牌构筑、八境宗主、无尽冲层、阅历成长。" />
+  <meta property="og:title" content="牌宗 · 五宗归一" />
+  <meta property="og:description" content="斗地主式压牌，牌理×气破境。八境 · 无尽 · 奇牌 · 成就。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/ui/seal.jpg" />
+  <link rel="icon" type="image/jpeg" href="assets/ui/seal.jpg" />
+  <link rel="apple-touch-icon" href="assets/ui/seal.jpg" />
   <title>牌宗 · 五宗归一</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,6 +19,7 @@
   <link rel="stylesheet" href="css/clean.css" />
   <link rel="stylesheet" href="css/shell.css" />
   <link rel="stylesheet" href="css/feel.css" />
+  <link rel="stylesheet" href="css/polish.css" />
 </head>
 <body>
   <div class="bg-layer" aria-hidden="true">
@@ -32,7 +40,7 @@
         <span class="brand-seal">牌</span>
         <div>
           <div class="brand-name">牌宗</div>
-          <div class="brand-tag">五宗归一 · 桌面版</div>
+          <div class="brand-tag">五宗归一</div>
         </div>
       </div>
       <nav class="header-nav">
@@ -116,6 +124,8 @@
               <span class="link-group-label">更多</span>
               <button class="title-link" id="btn-rank" type="button">排行榜</button>
               <button class="title-link" id="btn-import" type="button">导入构筑</button>
+              <button class="title-link" id="btn-export-save" type="button">导出存档</button>
+              <button class="title-link" id="btn-import-save" type="button">导入存档</button>
               <button class="title-link" id="btn-help" type="button">玩法说明</button>
               <button class="title-link is-accent" id="btn-tutorial" type="button">新手引导</button>
             </div>
@@ -562,7 +572,7 @@
         </div>
         <div class="btn-row end">
           <button class="btn btn-primary" id="btn-result-next">进入藏经阁</button>
-          <button class="btn btn-secondary" id="btn-result-shop">藏经阁</button>
+          <button class="btn btn-secondary" id="btn-result-shop" style="display:none" type="button">藏经阁</button>
           <button class="btn btn-primary" id="btn-result-retry">再来一局</button>
           <button class="btn btn-ghost" id="btn-result-home">回标题</button>
         </div>
@@ -643,6 +653,20 @@
       <div class="fx-burst"></div>
       <div class="fx-title" id="fx-title">破境</div>
       <div class="fx-sub" id="fx-sub">论道有成</div>
+    </div>
+  </div>
+
+  <!-- 存档 / 构筑导入弹层 -->
+  <div class="save-modal-overlay" id="save-modal-overlay" role="dialog" aria-modal="true">
+    <div class="save-modal-card">
+      <h3 id="save-modal-title">存档</h3>
+      <p class="save-modal-hint" id="save-modal-hint"></p>
+      <textarea id="save-modal-text" class="save-modal-text" rows="10" spellcheck="false"></textarea>
+      <div class="save-modal-actions">
+        <button type="button" class="btn btn-ghost btn-small" id="btn-save-modal-close">关闭</button>
+        <button type="button" class="btn btn-secondary btn-small" id="btn-save-modal-copy">复制全文</button>
+        <button type="button" class="btn btn-primary btn-small" id="btn-save-modal-apply">确认导入</button>
+      </div>
     </div>
   </div>
 

@@ -132,6 +132,51 @@ class PaiZongGame {
     } catch (_) {}
   }
 
+  /** 导出元进度存档（JSON 字符串，可跨设备粘贴恢复） */
+  exportMetaSave() {
+    const payload = {
+      app: 'paizong',
+      ver: 2,
+      exportedAt: Date.now(),
+      meta: this.meta,
+    };
+    return JSON.stringify(payload);
+  }
+
+  /**
+   * 导入元进度存档
+   * @returns {{ ok: boolean, reason?: string }}
+   */
+  importMetaSave(raw) {
+    try {
+      let text = String(raw || '').trim();
+      if (!text) return { ok: false, reason: '内容为空' };
+      // 允许包在 ``` 代码块里
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const data = JSON.parse(text);
+      const meta = data.meta || (data.version != null || data.totalYueli != null ? data : null);
+      if (!meta || typeof meta !== 'object') return { ok: false, reason: '不是有效的牌宗存档' };
+      // 浅合并默认结构，避免缺字段
+      const base = this.defaultMeta();
+      const merged = { ...base, ...meta };
+      if (!merged.stats) merged.stats = { ...base.stats };
+      else merged.stats = { ...base.stats, ...merged.stats };
+      if (!merged.metaUpgrades) merged.metaUpgrades = {};
+      if (!merged.achievements) merged.achievements = {};
+      if (!Array.isArray(merged.unlockedChars)) merged.unlockedChars = base.unlockedChars;
+      if (!Array.isArray(merged.seenQipai)) merged.seenQipai = [];
+      this.meta = merged;
+      this.migrateMeta();
+      this.save();
+      // 导入后清局内，避免脏状态
+      this.run = null;
+      this.battle = null;
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: '解析失败：' + (e.message || '格式错误') };
+    }
+  }
+
   availableYueli() {
     return Math.max(0, (this.meta.totalYueli || 0) - (this.meta.spentYueli || 0));
   }

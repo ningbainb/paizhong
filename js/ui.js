@@ -250,7 +250,7 @@ const UI = {
         const char = CHARACTERS.find(c => c.id === setup.characterId);
         const diff = DIFFICULTIES.find(d => d.id === setup.difficulty);
         lastBtn.style.display = 'inline-flex';
-        lastBtn.textContent = `继续 · ${char?.name || '牌客'} / ${diff?.name || '常道'}`;
+        lastBtn.textContent = `再开 · ${char?.name || '牌客'} / ${diff?.name || '常道'}`;
       } else {
         lastBtn.style.display = 'none';
       }
@@ -2292,8 +2292,12 @@ const UI = {
     const btnNext = this.$('btn-result-next');
     const btnShop = this.$('btn-result-shop');
     const btnRetry = this.$('btn-result-retry');
-    if (btnNext) btnNext.style.display = won ? 'inline-flex' : 'none';
-    if (btnShop) btnShop.style.display = won ? 'inline-flex' : 'none';
+    // 胜利：只留「进入藏经阁」；失败：再来一局
+    if (btnNext) {
+      btnNext.style.display = won ? 'inline-flex' : 'none';
+      btnNext.textContent = '进入藏经阁';
+    }
+    if (btnShop) btnShop.style.display = 'none';
     if (btnRetry) btnRetry.style.display = won ? 'none' : 'inline-flex';
 
     this.showScreen('result');
@@ -3115,20 +3119,148 @@ const UI = {
   },
 
   async importBuildFlow() {
-    const code = prompt('粘贴构筑分享码（PZ1…）');
-    if (!code) return;
-    const decoded = BuildShare.decode(code);
-    if (!decoded) {
-      this.toast('分享码无效');
+    // 优先用存档弹层；无则退回 prompt
+    const ta = this.$('save-modal-text');
+    const title = this.$('save-modal-title');
+    const apply = this.$('btn-save-modal-apply');
+    const copy = this.$('btn-save-modal-copy');
+    if (ta && title) {
+      this._saveModalMode = 'build';
+      title.textContent = '导入构筑分享码';
+      ta.value = '';
+      ta.placeholder = '粘贴 PZ1… 构筑码';
+      if (apply) apply.style.display = 'inline-flex';
+      if (copy) copy.style.display = 'none';
+      const hint = this.$('save-modal-hint');
+      if (hint) hint.textContent = '导入后将锁定角色与难度，请再选择模式出战。';
+      this.showSaveModal();
       return;
     }
+    const code = prompt('粘贴构筑分享码（PZ1…）');
+    if (!code) return;
+    this.applyImportBuildCode(code);
+  },
+
+  applyImportBuildCode(code) {
+    const decoded = BuildShare.decode(String(code || '').trim());
+    if (!decoded) {
+      this.toast('分享码无效');
+      return false;
+    }
     const ok = confirm(`解析成功：\n${BuildShare.summary(decoded)}\n\n将以该构筑开局（奇牌+心法），是否继续选模式？`);
-    if (!ok) return;
+    if (!ok) return false;
     this._importBuild = decoded;
     this.selectedCharId = decoded.character.id;
     this.selectedDifficulty = decoded.difficulty.id;
     this.toast('构筑已就绪，请选择模式后出战');
+    this.hideSaveModal();
     this.renderModeSelect('normal');
+    return true;
+  },
+
+  // ===== 存档导出 / 导入 =====
+  showSaveModal() {
+    const ov = this.$('save-modal-overlay');
+    if (ov) ov.classList.add('show');
+  },
+
+  hideSaveModal() {
+    const ov = this.$('save-modal-overlay');
+    if (ov) ov.classList.remove('show');
+    this._saveModalMode = null;
+  },
+
+  exportSave() {
+    const text = game.exportMetaSave();
+    const ta = this.$('save-modal-text');
+    const title = this.$('save-modal-title');
+    const apply = this.$('btn-save-modal-apply');
+    const copy = this.$('btn-save-modal-copy');
+    const hint = this.$('save-modal-hint');
+    this._saveModalMode = 'export';
+    if (title) title.textContent = '导出存档';
+    if (ta) {
+      ta.value = text;
+      ta.readOnly = true;
+    }
+    if (apply) apply.style.display = 'none';
+    if (copy) copy.style.display = 'inline-flex';
+    if (hint) {
+      hint.textContent = `可用阅历 ${game.availableYueli()} · 累计 ${game.meta.totalYueli || 0} · 请复制全文妥善保存。换设备可在「导入存档」粘贴恢复。`;
+    }
+    this.showSaveModal();
+    // 尝试下载文件
+    try {
+      const blob = new Blob([text], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `paizong-save-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch (_) {}
+    this.toast('存档已生成，可复制或下载 JSON');
+  },
+
+  importSaveFlow() {
+    const ta = this.$('save-modal-text');
+    const title = this.$('save-modal-title');
+    const apply = this.$('btn-save-modal-apply');
+    const copy = this.$('btn-save-modal-copy');
+    const hint = this.$('save-modal-hint');
+    this._saveModalMode = 'import';
+    if (title) title.textContent = '导入存档';
+    if (ta) {
+      ta.value = '';
+      ta.readOnly = false;
+      ta.placeholder = '粘贴完整存档 JSON…';
+    }
+    if (apply) {
+      apply.style.display = 'inline-flex';
+      apply.textContent = '确认导入';
+    }
+    if (copy) copy.style.display = 'none';
+    if (hint) {
+      hint.textContent = '警告：导入将覆盖当前本机进度。建议先导出备份。';
+    }
+    this.showSaveModal();
+  },
+
+  copySaveModalText() {
+    const ta = this.$('save-modal-text');
+    if (!ta || !ta.value) {
+      this.toast('没有可复制内容');
+      return;
+    }
+    this.copyText(ta.value).then(() => {
+      this.sfx('click');
+      this.toast('已复制到剪贴板');
+    }).catch(() => {
+      ta.select();
+      this.toast('请手动 Ctrl+C 复制');
+    });
+  },
+
+  applySaveModalImport() {
+    const ta = this.$('save-modal-text');
+    const raw = ta ? ta.value : '';
+    if (this._saveModalMode === 'build') {
+      this.applyImportBuildCode(raw);
+      return;
+    }
+    if (!raw.trim()) {
+      this.toast('请先粘贴存档内容');
+      return;
+    }
+    if (!confirm('确定导入？将覆盖当前本机阅历/成就/图鉴等进度。')) return;
+    const r = game.importMetaSave(raw);
+    if (!r.ok) {
+      this.toast(r.reason || '导入失败');
+      return;
+    }
+    this.hideSaveModal();
+    this.sfx('shop');
+    this.toast('存档已恢复');
+    this.renderTitle();
   },
 };
 
@@ -3192,8 +3324,13 @@ function bindUI() {
   on('btn-char-back', () => UI.renderModeSelect(UI.selectedMode || 'normal'));
   on('btn-map-start', () => { UI.sfx('click'); UI.startFromMap(); });
   on('btn-map-back', () => {
-    if (confirm('退出本次论道？局内进度将丢失（阅历已结算部分保留）。')) UI.renderTitle();
+    if (confirm('退出本次论道？局内进度将丢失（阅历已结算部分保留）。')) {
+      game.run = null;
+      game.battle = null;
+      UI.renderTitle();
+    }
   });
+  // 注意：keydown 仅在 bindUI 注册一套，勿在 DOMContentLoaded 再绑
   on('btn-qipai-confirm', () => { UI.sfx('shop'); UI.confirmQipai(); });
   on('btn-skip-qipai', () => UI.skipQipai());
   on('btn-draw', () => UI.onDraw());
@@ -3205,10 +3342,20 @@ function bindUI() {
   on('btn-result-next', () => UI.resultNext());
   on('btn-result-shop', () => UI.renderShop(true));
   on('btn-result-retry', () => UI.resultRetry());
-  on('btn-result-home', () => UI.renderTitle());
+  on('btn-result-home', () => {
+    // 回标题时保留 run 可再进商店？失败/胜利后一般清局；阅历已写入 meta
+    if (UI.screen === 'result' && !game.battle) {
+      /* keep */
+    }
+    UI.renderTitle();
+  });
   on('btn-shop-leave', () => UI.leaveShop());
   on('btn-battle-menu', () => {
-    if (confirm('确定退出本局？未结算进度将丢失。')) UI.renderTitle();
+    if (confirm('确定退出本局？未结算进度将丢失。')) {
+      game.run = null;
+      game.battle = null;
+      UI.renderTitle();
+    }
   });
   on('btn-copy-share', () => {
     const code = UI._lastShare || game.exportShareCode();
@@ -3293,6 +3440,21 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-nav]').forEach(btn => {
     btn.onclick = () => {
       const n = btn.getAttribute('data-nav');
+      // 论道中途离开 hub：先确认，避免静默丢局
+      const inRun = !!(game.run && UI.screen !== 'title' && UI.screen !== 'help');
+      const leaveRunScreens = ['weekly', 'rank', 'codex', 'achieve', 'meta', 'help'];
+      if (inRun && leaveRunScreens.includes(n)) {
+        const ok = confirm('离开当前界面？\n若正在论道中，未结算的局内进度将丢失（已结算阅历保留）。');
+        if (!ok) return;
+        if (['battle', 'map', 'shop', 'result', 'char', 'mode', 'qipai'].includes(UI.screen)) {
+          // 明确放弃本局
+          if (UI.screen === 'battle' || UI.screen === 'map' || UI.screen === 'shop') {
+            game.run = null;
+            game.battle = null;
+          }
+        }
+      }
+      UI.sfx('click');
       if (n === 'help') UI.renderHelp();
       if (n === 'codex') UI.renderCodex();
       if (n === 'achieve') UI.renderAchieve();
@@ -3302,33 +3464,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   });
 
-  document.addEventListener('keydown', (e) => {
-    if (UI.screen !== 'battle' || UI.aiThinking || UI.animating) return;
-    if (e.target.matches('input, textarea')) return;
-    const key = e.key.toLowerCase();
-    if (key === ' ' || key === 'enter') {
-      e.preventDefault();
-      UI.onPlay();
-    } else if (key === 'p') {
-      e.preventDefault();
-      UI.onPass();
-    } else if (key === 'd') {
-      e.preventDefault();
-      UI.onDraw();
-    } else if (key === 'z') {
-      e.preventDefault();
-      UI.onZongshi();
-    } else if (key === 'h') {
-      e.preventDefault();
-      UI.onHint();
-    } else if (key === 'escape') {
-      if (game.battle) {
-        game.battle.selectedIds.clear();
-        UI.renderHand();
-        UI.updateHandHint();
-      }
-    }
-  });
+  // 存档导入/导出
+  on('btn-export-save', () => UI.exportSave());
+  on('btn-import-save', () => UI.importSaveFlow());
+  on('btn-save-modal-close', () => UI.hideSaveModal());
+  on('btn-save-modal-copy', () => UI.copySaveModalText());
+  on('btn-save-modal-apply', () => UI.applySaveModalImport());
 
   // 首次点击解锁 AudioContext
   document.body.addEventListener('click', () => {
