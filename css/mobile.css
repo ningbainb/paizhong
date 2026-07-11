@@ -517,6 +517,9 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .battle-side.right .hotkeys {
+    display: none; /* 手机以触控为主 */
+  }
 
   /* 选角 / 商店 / 图鉴 */
   .char-grid {
