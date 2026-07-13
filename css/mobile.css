@@ -695,3 +695,14 @@ body {
     margin: 4px 0 12px;
   }
 }
+
+/* 最后加载的跨端覆盖：手牌仍可横向拖动/滚轮浏览，但绝不显示系统横向滚动条。 */
+.hand-cards {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.hand-cards::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
