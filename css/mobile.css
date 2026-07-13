@@ -679,8 +679,17 @@ body {
     padding: 30px 12px 10px;
     overflow-y: hidden;
   }
-  .card.selected {
-    transform: translateY(-20px) scale(1.03);
+  .hand-cards .card.selected {
+    transform:
+      translateY(calc(var(--fan-y, 0px) - 20px))
+      rotate(calc(var(--fan-rot, 0deg) * 0.35))
+      scale(1.03);
+  }
+  .hand-cards .card.selected:hover {
+    transform:
+      translateY(calc(var(--fan-y, 0px) - 22px))
+      rotate(calc(var(--fan-rot, 0deg) * 0.35))
+      scale(1.04);
   }
   .battle-side.right {
     min-height: 0;
