@@ -64,6 +64,10 @@ const ASSETS = {
     bomb: 'assets/hands/bomb.jpg',
     rocket: 'assets/hands/rocket.jpg',
   },
+  cards: {
+    jokerSmall: 'assets/cards/joker_small.jpg',
+    jokerBig: 'assets/cards/joker_big.jpg',
+  },
   xinfa: {
     single: 'assets/xinfa/single.jpg',
     pair: 'assets/xinfa/pair.jpg',
@@ -344,7 +348,7 @@ function preloadAssetsForScreen(screen) {
     case 'battle':
       urls = [ASSETS.shell.battleBg, ASSETS.shell.sidebar, ASSETS.shell.handTray, ASSETS.shell.tableFrame,
         ASSETS.ui.tableFelt, ASSETS.ui.cardBack, ASSETS.ui.enemy, ASSETS.ui.boss,
-        ...values(ASSETS.icons), ...values(ASSETS.hands)];
+        ...values(ASSETS.icons), ...values(ASSETS.hands), ...values(ASSETS.cards)];
       break;
     case 'shop':
       urls = [ASSETS.ui.shopBg, ...values(ASSETS.xinfa), ...values(ASSETS.qipai)];

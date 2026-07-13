@@ -395,10 +395,23 @@
   color: #1a1a1a;
 }
 .card.joker-red {
-  background: linear-gradient(165deg, #fff8f6, #ffe0dc 60%, #f5c4be);
+  background:
+    linear-gradient(rgba(255,255,255,0.04), rgba(255,255,255,0.04)),
+    url('../assets/cards/joker_big.jpg') center / cover no-repeat;
 }
 .card.joker-black {
-  background: linear-gradient(165deg, #fafafa, #e8e8e8 60%, #d0d0d0);
+  background:
+    linear-gradient(rgba(255,255,255,0.04), rgba(255,255,255,0.04)),
+    url('../assets/cards/joker_small.jpg') center / cover no-repeat;
+}
+.card.joker-red .card-corner,
+.card.joker-black .card-corner {
+  background: rgba(255, 248, 231, 0.78);
+  border: 1px solid rgba(117, 79, 24, 0.42);
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+  padding: 1px 2px;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.7);
 }
 .card.table-card {
   width: 66px;
