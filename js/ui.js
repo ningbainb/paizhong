@@ -31,6 +31,11 @@ const UI = {
       // 战斗屏时顶栏收一点氛围
       const header = this.$('app-header');
       if (header) header.classList.toggle('battle-mode', name === 'battle');
+      // 先让本屏完成绘制，再预取本屏后续会用到的资源；避免标题页抢加载全素材。
+      clearTimeout(this._screenAssetPreloadTimer);
+      this._screenAssetPreloadTimer = setTimeout(() => {
+        if (typeof preloadAssetsForScreen === 'function') preloadAssetsForScreen(name);
+      }, 0);
     }
   },
 

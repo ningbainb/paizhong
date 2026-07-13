@@ -279,23 +279,78 @@ const ASSETS = {
   },
 };
 
-/** 恢复原有策略：启动时一次性预加载全部素材。 */
-function preloadAssets() {
-  const urls = [
-    ...Object.values(ASSETS.shell || {}),
-    ...Object.values(ASSETS.ui || {}),
-    ...Object.values(ASSETS.fx || {}),
-    ...Object.values(ASSETS.icons || {}),
-    ...Object.values(ASSETS.hands || {}),
-    ...Object.values(ASSETS.xinfa || {}),
-    ...Object.values(ASSETS.diff || {}),
-    ...Object.values(ASSETS.sects || {}),
-    ...Object.values(ASSETS.chars || {}),
-    ...Object.values(ASSETS.achieve || {}),
-    ...Object.values(ASSETS.qipai || {}),
-  ].filter(Boolean);
-  urls.forEach(src => {
+// 已请求资源去重：页面切换时只为当前页面补齐所需素材，避免首屏并发抢占全部图片。
+const PRELOADED_ASSET_URLS = new Set();
+
+function preloadAssetUrls(urls) {
+  [...new Set(urls.filter(Boolean))].forEach(src => {
+    if (PRELOADED_ASSET_URLS.has(src)) return;
+    PRELOADED_ASSET_URLS.add(src);
     const img = new Image();
     img.src = src;
   });
+}
+
+/** 首屏只预取壳层与标题页资源；页面本身仍会正常加载其 CSS 背景。 */
+function preloadAssets() {
+  preloadAssetUrls([
+    ASSETS.shell.appBg,
+    ASSETS.shell.header,
+    ASSETS.shell.outerFrame,
+    ASSETS.shell.contentFrame,
+    ASSETS.shell.titleHall,
+    ASSETS.ui.titleBg,
+    ASSETS.ui.seal,
+  ]);
+}
+
+/** 在进入对应页面后补齐该页面的图标和插画，不抢占首屏带宽。 */
+function preloadAssetsForScreen(screen) {
+  const values = (obj) => Object.values(obj || {});
+  let urls = [];
+  switch (screen) {
+    case 'mode':
+      urls = [ASSETS.ui.modeBg, ...values(ASSETS.diff)];
+      break;
+    case 'char':
+      urls = [ASSETS.ui.charBg, ...values(ASSETS.sects), ...values(ASSETS.chars)];
+      break;
+    case 'map':
+      urls = [ASSETS.ui.mapBg];
+      break;
+    case 'qipai':
+    case 'codex':
+      urls = [ASSETS.ui.codexBg, ASSETS.ui.frameCommon, ASSETS.ui.frameRare, ASSETS.ui.frameLegend,
+        ASSETS.ui.frameCursed, ...values(ASSETS.qipai)];
+      break;
+    case 'battle':
+      urls = [ASSETS.shell.battleBg, ASSETS.shell.sidebar, ASSETS.shell.handTray, ASSETS.shell.tableFrame,
+        ASSETS.ui.tableFelt, ASSETS.ui.cardBack, ASSETS.ui.enemy, ASSETS.ui.boss,
+        ...values(ASSETS.icons), ...values(ASSETS.hands)];
+      break;
+    case 'shop':
+      urls = [ASSETS.ui.shopBg, ...values(ASSETS.xinfa), ...values(ASSETS.qipai)];
+      break;
+    case 'result':
+      urls = [ASSETS.ui.resultBg, ...values(ASSETS.fx)];
+      break;
+    case 'help':
+      urls = [ASSETS.ui.helpBg, ...values(ASSETS.hands)];
+      break;
+    case 'achieve':
+      urls = [...values(ASSETS.achieve)];
+      break;
+    case 'meta':
+      urls = [ASSETS.ui.metaBg];
+      break;
+    case 'rank':
+      urls = [ASSETS.ui.rankBg];
+      break;
+    case 'weekly':
+      urls = [ASSETS.ui.weeklyBanner];
+      break;
+    default:
+      return;
+  }
+  preloadAssetUrls(urls);
 }
