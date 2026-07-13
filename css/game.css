@@ -927,8 +927,12 @@ kbd {
   justify-content: center;
   gap: 0;
   max-width: 90%;
-  min-height: 80px;
+  min-height: 96px;
   align-items: center;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  overflow: visible;
 }
 .last-play-info {
   font-size: 14px;
@@ -1160,6 +1164,12 @@ kbd {
 }
 .card.table-card:first-child { margin-left: 0; }
 .card.table-card:hover { transform: none; }
+
+/* 已出牌少时不叠牌，保证第一手和常见三带一/炸弹可以逐张辨认。 */
+.last-play .card.table-card { margin-left: -4px; }
+.last-play .card.table-card:first-child { margin-left: 0; }
+.last-play.last-play-crowded .card.table-card { margin-left: -18px; }
+.last-play.last-play-crowded .card.table-card:first-child { margin-left: 0; }
 
 /* 操作栏 */
 .action-bar {

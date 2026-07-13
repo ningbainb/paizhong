@@ -392,8 +392,9 @@ body {
   .card.table-card {
     width: 48px;
     height: 68px;
-    margin-left: -16px;
+    margin-left: -3px;
   }
+  .last-play.last-play-crowded .card.table-card { margin-left: -16px; }
   .last-play-info,
   .battle-phase {
     font-size: 11px;

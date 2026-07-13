@@ -1620,8 +1620,11 @@ const UI = {
     const area = this.$('last-play');
     const info = this.$('last-play-info');
     area.innerHTML = '';
+    area.classList.remove('last-play-crowded');
 
     if (b.lastHand) {
+      // 少量出牌应完整展开；仅长组合才压缩，避免第一手的三带一、四张炸弹互相遮挡。
+      area.classList.toggle('last-play-crowded', b.lastHand.cards.length > 7);
       b.lastHand.cards.forEach(c => {
         area.appendChild(this.createCardEl(c, { table: true }));
       });
