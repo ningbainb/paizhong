@@ -557,6 +557,7 @@ html, body {
   flex: 1;
   align-content: start;
   overflow: auto;
+  padding: 10px 4px 18px;
 }
 .qipai-card {
   background: linear-gradient(165deg, rgba(30, 36, 48, 0.95), rgba(14, 18, 26, 0.95));
@@ -572,6 +573,28 @@ html, body {
   border-color: var(--gold);
   box-shadow: 0 8px 28px rgba(212, 175, 55, 0.12);
   transform: translateY(-2px);
+}
+.qipai-card.selected {
+  border-color: rgba(240, 232, 210, 0.34);
+  outline: none;
+  box-shadow: inset 3px 0 0 var(--gold), inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+.qipai-card.selected::before {
+  content: "✓";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgba(61, 207, 154, 0.55);
+  border-radius: 6px;
+  background: rgba(19, 65, 49, 0.92);
+  color: #dfffea;
+  font-size: 14px;
+  font-weight: 700;
 }
 .qipai-card .rarity {
   font-size: 11px;
@@ -725,6 +748,17 @@ html, body {
   font-size: 12px;
   line-height: 1.65;
   color: var(--muted);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+.battle-side.right > .side-block:first-child {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .build-list .build-item {
   display: flex;
@@ -735,6 +769,10 @@ html, body {
 .build-list .build-item b {
   color: var(--gold-light);
   white-space: nowrap;
+}
+.build-item-text span {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .hotkeys {
   font-size: 12px;
@@ -984,6 +1022,45 @@ kbd {
   font-weight: 500;
 }
 .hand-tools { display: flex; gap: 8px; }
+
+/* 天机测：靠近触发按钮显示，避免和全局 toast、牌桌信息抢视线。 */
+.hand-tools { position: relative; }
+.peek-preview {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 32;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+  padding: 8px 10px;
+  border: 1px solid rgba(212, 175, 55, 0.72);
+  border-radius: 9px;
+  background: rgba(8, 11, 16, 0.96);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5), 0 0 18px rgba(212, 175, 55, 0.16);
+  color: var(--gold-light);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-5px) scale(0.98);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.peek-preview.is-visible { opacity: 1; transform: translateY(0) scale(1); }
+.peek-label { color: var(--muted); }
+.peek-suits { display: flex; gap: 5px; }
+.peek-suit {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid rgba(212, 175, 55, 0.32);
+  border-radius: 5px;
+  background: rgba(212, 175, 55, 0.08);
+  color: var(--gold-light);
+  font-family: var(--display);
+  font-size: 16px;
+}
 
 .hand-cards {
   display: flex;

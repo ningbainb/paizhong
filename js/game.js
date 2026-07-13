@@ -953,6 +953,10 @@ class PaiZongGame {
       playerHand = sortCards(playerHand);
     }
 
+    // 手牌臃肿只在本局起手时结算一次；之后出牌、补牌不会反复按实时张数加心魔。
+    const openingHandCount = playerHand.length;
+    const openingHandXinmo = openingHandCount > 12 ? 1 : 0;
+
     let shield = 0;
     if (this.hasQipai('shouhu')) shield += 1;
     if (mb.shieldGuaranteed) shield += 1;
@@ -1022,8 +1026,10 @@ class PaiZongGame {
       turn: 'player',
       freePlay: true,
       passStreak: 0,
-      xinmo: Math.max(0, xinmo - (mb.xinmoStart || 0)),
+      xinmo: Math.max(0, xinmo - (mb.xinmoStart || 0)) + openingHandXinmo,
       xinmoCap: (this.hasQipai('pingwen') ? 6 : 5) + (mb.xinmoCap || 0),
+      openingHandCount,
+      openingHandXinmo,
       round: 1,
       // 暗局/宗主局多给几回合，避免前期硬拖；后期略紧
       maxSoftRound: (stage.type === 'zong' ? 26 : stage.type === 'an' ? 24 : 22)
@@ -1141,6 +1147,7 @@ class PaiZongGame {
       this.log(`境界底牌 ${this.battle.reserve.length} 张（可主动摸牌）`);
     }
     if (shield) this.log(`开局护体 ×${shield}`);
+    if (openingHandXinmo) this.log(`起手${openingHandCount}张，心魔+${openingHandXinmo}`);
     if (jiguanTokens) this.log(`机关令 ${jiguanTokens}`);
     // 消耗「下局」临时词条
     if (this.run.runFlags?.nextFlushPct) {
@@ -1430,17 +1437,8 @@ class PaiZongGame {
     }
     const drawMax = 6 + (this.getMetaBonuses().drawExtra || 0);
     if ((b.drawsThisBattle || 0) >= drawMax) return { ok: false, reason: `本局摸牌次数已达上限（${drawMax}）` };
-    // 手动摸牌略增心魔压力，防止无限摸
+    // 摸牌只受次数上限约束；手牌臃肿的心魔已在开局一次性结算。
     const res = this.drawCardsToHand(1, 'manual');
-    if (res.ok && (b.drawsThisBattle % 3 === 0)) {
-      b.xinmo = Math.min((b.xinmoCap || 5), b.xinmo + 0); // 不额外惩罚前几次
-    }
-    // 每第 3、6 次手动/自动合计摸牌时 +0 心魔；改为：手牌>12 时摸牌 +1 心魔
-    if (res.ok && b.playerHand.length > 12) {
-      b.xinmo++;
-      this.log('手牌臃肿，心魔+1');
-      this.checkXinmo();
-    }
     return res;
   }
 

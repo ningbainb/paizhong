@@ -785,6 +785,27 @@ function aiIsBomb(play) {
   return play && (play.type === 'bomb' || play.type === 'rocket');
 }
 
+/**
+ * 三带/飞机带牌优先消耗低牌，避免为了即时牌理把 2、A 等压制资源当翅膀打掉。
+ * 仅影响 AI 的选牌偏好，不改变牌型合法性或结算得分。
+ */
+function aiAttachmentConservationCost(handCards, play) {
+  if (!play || !['triple_one', 'triple_two'].includes(play.type) || !play.cards?.length) return 0;
+  const byOrder = new Map();
+  play.cards.forEach(c => byOrder.set(c.order, (byOrder.get(c.order) || 0) + 1));
+  const tripleOrder = [...byOrder.entries()].find(([, count]) => count >= 3)?.[0];
+  if (tripleOrder == null) return 0;
+
+  const wings = play.cards.filter(c => c.order !== tripleOrder);
+  return wings.reduce((cost, c) => {
+    // 带牌从低阶起递增付出机会成本，让同一组三张优先带最小可用单/对。
+    const rankCost = Math.max(0, (c.order || 0) - 3) * 2.5;
+    const highRankCost = Math.max(0, (c.order || 0) - 10) * 4;
+    const twoPenalty = (c.order || 0) >= 15 ? 16 : 0;
+    return cost + rankCost + highRankCost + twoPenalty;
+  }, 0);
+}
+
 function aiBuildBoard(ctx, freePlay, lastHand) {
   const pScore = ctx.playerScore || 0;
   const pTh = Math.max(1, ctx.playerThreshold || 1000);
@@ -864,7 +885,7 @@ function aiAlgoRush(plays, handCards, ctx, board) {
     if (gain >= board.needEnemy * 0.5) s += 30;
     if (gain >= board.needEnemy * 0.8) s += 50;
     s += (Math.random() - 0.5) * 3;
-    return s;
+    return s - aiAttachmentConservationCost(handCards, play);
   });
 }
 
@@ -883,7 +904,7 @@ function aiAlgoControl(plays, handCards, ctx, board) {
       if (play.type === 'straight' || play.type === 'airplane') s += 10;
       s += aiRemainingStructure(handCards, play) * 1.2;
       if (board.playerDanger && !bomb) s += play.maxOrder * 1.5;
-      return s + (Math.random() - 0.5) * 2;
+      return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2;
     });
   }
   // 跟牌：优先打断；巧压；必要时炸
@@ -904,7 +925,7 @@ function aiAlgoControl(plays, handCards, ctx, board) {
     // 压完后仍有大牌更好
     s += aiRemainingStructure(handCards, play) * 0.9;
     s += play.maxOrder * 0.8; // 抬高压制线
-    return s + (Math.random() - 0.5) * 2;
+    return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2;
   });
 }
 
@@ -923,7 +944,7 @@ function aiAlgoEconomize(plays, handCards, ctx, board) {
       s += aiRemainingStructure(handCards, play) * 1.4;
       // 仍要推进
       if (board.enemyNearWin) s += gain * 1.2;
-      return s + (Math.random() - 0.5) * 2;
+      return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2;
     });
   }
   // 最小阶差合法压
@@ -938,7 +959,7 @@ function aiAlgoEconomize(plays, handCards, ctx, board) {
     }
     if (gap >= 1 && gap <= 2) s += 15;
     if (board.chain >= 2 && !bomb) s += 10;
-    return s + (Math.random() - 0.5) * 1.5;
+    return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 1.5;
   });
 }
 
@@ -963,7 +984,7 @@ function aiAlgoTempo(plays, handCards, ctx, board) {
     }
     if (board.handCount <= 8) s += 15;
     if (board.enemyNearWin) s += gain * 0.8;
-    return s + (Math.random() - 0.5) * 2.5;
+    return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2.5;
   });
 }
 
@@ -1012,7 +1033,7 @@ function aiAlgoHybrid(plays, handCards, ctx, board) {
     if (board.strategy === 'finish') s += gain * 0.5 + 18;
     if (board.strategy === 'block' && !board.freePlay) s += 14;
     s += (Math.random() - 0.5) * (board.diff === 'legend' ? 1.5 : 4);
-    return s;
+    return s - aiAttachmentConservationCost(handCards, play);
   });
 }
 
@@ -1130,6 +1151,7 @@ function aiEvalAfterPlay(handCards, play, ctx, board) {
   v += eProg * 120;
   v -= pProg * 40;
   v += remain * 2.5;
+  v -= aiAttachmentConservationCost(handCards, play);
 
   // 跟牌后：压制线越高，玩家越难压
   if (!board.freePlay) {

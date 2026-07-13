@@ -499,7 +499,7 @@ body {
     display: flex !important;
     flex-direction: row;
     flex-wrap: nowrap;
-    max-height: 72px;
+    max-height: 96px;
     overflow-x: auto;
     overflow-y: hidden;
     gap: 8px;
@@ -513,9 +513,10 @@ body {
   }
   .battle-side.right .build-list {
     font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-height: 58px;
+    white-space: normal;
+    overflow-y: auto;
+    text-overflow: clip;
   }
   .battle-side.right .hotkeys {
     display: none; /* 手机以触控为主 */
@@ -635,5 +636,61 @@ body {
   }
   .util-tray {
     max-height: 20vh;
+  }
+}
+
+/* 720p 桌面：先保证手牌和操作条完整可见，其余信息在各自容器内滚动。 */
+@media (min-width: 781px) and (max-height: 820px) {
+  .battle-desktop {
+    gap: 8px;
+    padding: 8px 14px 10px;
+  }
+  .battle-table {
+    min-height: 0;
+    gap: 8px;
+  }
+  .table-frame-wrap {
+    flex: 1 1 0;
+    min-height: 150px;
+  }
+  .table-felt {
+    min-height: 0 !important;
+    padding: 10px 14px;
+  }
+  .util-tray {
+    max-height: min(142px, 24vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  #jinnang-section:not([hidden]) {
+    padding: 4px 6px 6px;
+  }
+  .jinnang-bar {
+    max-height: 62px;
+  }
+  .hand-area {
+    position: relative;
+    z-index: 10;
+    padding-top: 10px;
+  }
+  .hand-cards {
+    min-height: calc(var(--card-h) + 50px);
+    padding: 30px 12px 10px;
+    overflow-y: hidden;
+  }
+  .card.selected {
+    transform: translateY(-20px) scale(1.03);
+  }
+  .battle-side.right {
+    min-height: 0;
+  }
+  #screen-result .result-shell {
+    justify-content: flex-start;
+    padding-top: 18px;
+    padding-bottom: 28px;
+  }
+  #screen-result .result-score {
+    font-size: 56px;
+    margin: 4px 0 12px;
   }
 }

@@ -419,6 +419,17 @@
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25) inset;
 }
 .util-section { min-height: 0; }
+#jinnang-section:not([hidden]) {
+  order: -1;
+  flex-shrink: 0;
+  padding: 6px 8px 8px;
+  border: 1px solid rgba(110, 140, 255, 0.3);
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(44, 57, 108, 0.22), rgba(10, 14, 26, 0.35));
+}
+#jinnang-section .util-head {
+  margin-bottom: 4px;
+}
 .util-head {
   display: flex;
   align-items: flex-start;
@@ -465,6 +476,12 @@
   gap: 6px;
   justify-content: flex-start;
   flex-wrap: wrap;
+}
+.jinnang-bar {
+  max-height: min(112px, 18vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 3px;
 }
 .jiguan-chip,
 .jinnang-chip {

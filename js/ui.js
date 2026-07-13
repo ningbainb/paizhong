@@ -1516,7 +1516,15 @@ const UI = {
       drawBtn.textContent = `摸牌${b.reserve?.length ? `(底${b.reserve.length})` : ''}·${leftDraw}`;
       drawBtn.title = `本局还可摸 ${leftDraw}/${drawMax} 次（手牌臃肿会增心魔）`;
     }
-    this.$('btn-peek').style.display = game.run.character.passive?.type === 'peek_suits' ? 'inline-flex' : 'none';
+    const peekBtn = this.$('btn-peek');
+    if (peekBtn) {
+      const canPeek = game.run.character.passive?.type === 'peek_suits';
+      peekBtn.style.display = canPeek ? 'inline-flex' : 'none';
+      peekBtn.disabled = !isPlayer || !(b.deck || []).length;
+      peekBtn.title = !isPlayer
+        ? '轮到你时才能施展天机测'
+        : (!(b.deck || []).length ? '牌堆已空，无法推演' : '查看牌堆顶三张花色');
+    }
 
     // 引导：无牌可压 → 过牌；有合法选中 → 出牌
     playBtn.classList.remove('need-action');
@@ -2369,8 +2377,34 @@ const UI = {
   },
 
   onPeek() {
+    const b = game.battle;
+    if (!b || b.turn !== 'player' || b.status !== 'playing' || this.aiThinking || this.animating) {
+      this.toast('轮到你时才能施展天机测');
+      return;
+    }
     const suits = game.peekTopSuits();
-    if (suits) this.toast('牌堆顶：' + suits.join(' '));
+    if (!suits || !suits.length) {
+      this.toast('牌堆已空，无法推演');
+      return;
+    }
+    this.sfx('select');
+    this.renderBattle();
+    this.showPeekPreview(suits);
+  },
+
+  showPeekPreview(suits) {
+    const preview = this.$('peek-preview');
+    if (!preview) return;
+    const symbols = suits.map(s => `<span class="peek-suit">${s}</span>`).join('');
+    preview.innerHTML = `<span class="peek-label">天机测 · 牌堆顶</span><span class="peek-suits">${symbols}</span>`;
+    preview.hidden = false;
+    preview.classList.remove('is-visible');
+    requestAnimationFrame(() => preview.classList.add('is-visible'));
+    clearTimeout(this._peekPreviewTimer);
+    this._peekPreviewTimer = setTimeout(() => {
+      preview.classList.remove('is-visible');
+      setTimeout(() => { if (!preview.classList.contains('is-visible')) preview.hidden = true; }, 180);
+    }, 2600);
   },
 
   runEnemyTurn() {
