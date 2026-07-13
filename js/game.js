@@ -986,14 +986,14 @@ class PaiZongGame {
     // 宗主局：守关者先手气势（进度起步）
     let enemyStartScore = 0;
     if (stage.type === 'zong') {
-      enemyStartScore = Math.floor(threshold * 0.06 * diff.enemy);
+      enemyStartScore = Math.floor(threshold * 0.06);
     } else if (stage.type === 'an') {
-      enemyStartScore = Math.floor(threshold * 0.03 * diff.enemy);
+      enemyStartScore = Math.floor(threshold * 0.03);
     }
 
-    let enemyMul = diff.enemy * (weekly?.enemyMul || 1);
+    // 难度的 enemy 系数只作用于守关者出牌得分，避免同时降门槛造成重复强化。
+    let enemyMul = weekly?.enemyMul || 1;
     let enemyThreshold = Math.floor(threshold * (1.15 + (this.run.realmIndex || 0) * 0.03) / enemyMul);
-    if (mods.includes('enemy_boost')) enemyThreshold = Math.floor(enemyThreshold * 0.75);
     if (mb.enemySoft) enemyThreshold = Math.floor(enemyThreshold * (1 - mb.enemySoft));
 
     let qiCap = this.getQiCap();
@@ -2180,10 +2180,12 @@ class PaiZongGame {
       playerChain: b.playerChain,
       playerHandCount: b.playerHand.length,
       enemyHandCount: b.enemyHand.length,
+      enemyChain: b.enemyChain || 0,
       round: b.round,
       maxSoftRound: b.maxSoftRound,
       difficulty: diff.id,
       aiRate,
+      enemyFlatBonus: b.boss?.enemyCounter || 0,
       stageType: b.stageType,
       bossId: b.boss?.id || this.run.character?.id || null,
       _aiDebug: aiDebug,
@@ -2220,30 +2222,15 @@ class PaiZongGame {
     if (!(b.frozenEnemyIds instanceof Set)) b.frozenEnemyIds = new Set();
     b.frozenEnemyIds.clear();
 
-    // 得分：与选型估分同向，并叠加局势加成
-    let aiScore = Math.floor(play.liSum * play.baseQi * aiRate);
-    if (b.round > 12) aiScore = Math.floor(aiScore * 1.08);
-    if (b.round > 18) aiScore = Math.floor(aiScore * 1.06);
-    if (play.type === 'bomb' || play.type === 'rocket') aiScore = Math.floor(aiScore * 1.28);
-    if (play.type === 'straight' || play.type === 'consecutive_pairs' || play.type === 'airplane') {
-      aiScore = Math.floor(aiScore * 1.06);
-    }
-    // 同花粗略
-    if (play.cards && play.cards.length >= 3) {
-      const s0 = play.cards[0].suit;
-      if (s0 && play.cards.every(c => c.suit === s0 || c.joker)) aiScore = Math.floor(aiScore * 1.1);
-    }
-    if (b.playerChain >= 2 && (strategy === 'block' || strategy === 'aggressive')) {
-      aiScore = Math.floor(aiScore * 1.1);
-    }
-    if (strategy === 'finish') aiScore = Math.floor(aiScore * 1.08);
-    // 暗局/宗主略强
-    if (b.stageType === 'zong') aiScore = Math.floor(aiScore * 1.06);
-    if (b.stageType === 'an') aiScore = Math.floor(aiScore * 1.03);
-    // 连压中的守关者（敌方 chain）
-    if ((b.enemyChain || 0) >= 1) aiScore = Math.floor(aiScore * (1 + Math.min(0.12, b.enemyChain * 0.04)));
-    aiScore = Math.max(1, aiScore);
-    b.enemyScore += aiScore;
+    // 选牌估分与实际结算走同一函数；宗主额外进度也计入本手总增量。
+    const counterScore = aiCtx.enemyFlatBonus;
+    const enemyGain = calculateEnemyScore(play, aiCtx);
+    const aiScore = enemyGain - counterScore;
+    b.enemyScore += enemyGain;
+    b.lastPlayScore = enemyGain;
+    b.lastScoreBreakdown = counterScore
+      ? [{ label: '出牌得分', value: `+${aiScore}` }, { label: b.boss.name, value: `+${counterScore}` }]
+      : [{ label: '出牌得分', value: `+${aiScore}` }];
     b.lastHand = play;
     b.lastPlayer = 'enemy';
     b.freePlay = false;
@@ -2253,7 +2240,8 @@ class PaiZongGame {
     b.passStreak = 0;
 
     const algoTag = aiDebug.algo ? ` ·${aiDebug.algo}` : '';
-    this.log(`守关者【${play.name}】+${aiScore}（${b.enemyScore}/${b.enemyThreshold}）${algoTag}`);
+    const counterTag = counterScore ? `，${b.boss.name}+${counterScore}` : '';
+    this.log(`守关者【${play.name}】+${enemyGain}（出牌${aiScore}${counterTag}，${b.enemyScore}/${b.enemyThreshold}）${algoTag}`);
     b.lastEnemyAlgo = aiDebug.algo || '';
     // 被压制，气脉中断
     b.initiativeStreak = 0;
@@ -2263,8 +2251,6 @@ class PaiZongGame {
       b.yingCounterQi = this.run.character.passive.amount;
     }
     if (this.hasQipai('fanji')) b.counterLi = 10;
-    if (b.boss?.enemyCounter) b.enemyScore += b.boss.enemyCounter;
-
     if (b.enemyScore >= b.enemyThreshold) {
       if (b.shield > 0) {
         b.shield--;
@@ -2274,11 +2260,11 @@ class PaiZongGame {
         // 护体回血后若玩家已达门槛，仍算玩家破境
         if (b.playerScore >= b.threshold) {
           const win = this.onWin();
-          return { action: 'play', hand: play, score: aiScore, won: true, reward: win.reward, yueliGain: win.yueliGain };
+          return { action: 'play', hand: play, score: enemyGain, won: true, reward: win.reward, yueliGain: win.yueliGain };
         }
       } else {
         const lose = this.onLose('守关者先破境');
-        return { action: 'play', hand: play, score: aiScore, lost: true, reason: lose.reason, yueli: lose.yueli };
+        return { action: 'play', hand: play, score: enemyGain, lost: true, reason: lose.reason, yueli: lose.yueli };
       }
     }
 
@@ -2291,7 +2277,7 @@ class PaiZongGame {
         b.enemyScore += 25;
         if (b.enemyScore >= b.enemyThreshold && b.shield <= 0) {
           const lose = this.onLose('守关者破境');
-          return { action: 'play', hand: play, score: aiScore, lost: true, reason: lose.reason, yueli: lose.yueli };
+          return { action: 'play', hand: play, score: enemyGain, lost: true, reason: lose.reason, yueli: lose.yueli };
         }
       }
     }
@@ -2301,13 +2287,13 @@ class PaiZongGame {
     b.round++;
     this.tickRoundEffects();
     if (b.status === 'lost') {
-      return { action: 'play', hand: play, score: aiScore, lost: true, reason: '拖回合失败' };
+      return { action: 'play', hand: play, score: enemyGain, lost: true, reason: '拖回合失败' };
     }
     if (b.status === 'won') {
-      return { action: 'play', hand: play, score: aiScore, won: true };
+      return { action: 'play', hand: play, score: enemyGain, won: true };
     }
     this.saveRun('battle');
-    return { action: 'play', hand: play, score: aiScore };
+    return { action: 'play', hand: play, score: enemyGain };
   }
 
   afterEnemyPass() {

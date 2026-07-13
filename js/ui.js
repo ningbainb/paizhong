@@ -1630,8 +1630,8 @@ const UI = {
       });
       const who = b.lastPlayer === 'player' ? '你' : '守关者';
       let scoreHtml = '';
-      if (b.lastPlayer === 'player' && b.lastPlayScore) {
-        scoreHtml = `<span class="score-pop">+${b.lastPlayScore}</span>`;
+      if (b.lastPlayScore) {
+        scoreHtml = `<span class="score-pop${b.lastPlayer === 'enemy' ? ' enemy' : ''}">+${b.lastPlayScore}</span>`;
       }
       const beatTag = (b.lastPlayer === 'player' && b.lastPlayWasBeat)
         ? '<span class="beat-tag">压过</span>'

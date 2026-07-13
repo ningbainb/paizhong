@@ -950,6 +950,10 @@ kbd {
   animation: pop 0.45s cubic-bezier(0.22, 1, 0.36, 1);
   text-shadow: 0 0 24px rgba(212, 175, 55, 0.5);
 }
+.last-play-info .score-pop.enemy {
+  color: #f0a090;
+  text-shadow: 0 0 24px rgba(232, 93, 76, 0.45);
+}
 @keyframes pop {
   0% { transform: scale(0.4); opacity: 0; }
   60% { transform: scale(1.12); }

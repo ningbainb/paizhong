@@ -744,17 +744,32 @@ function aiCardControlValue(hand) {
   return v;
 }
 
-function aiEstimateScore(hand, ctx = {}) {
+/**
+ * 守关者单手得分。
+ * 选牌估分与实际结算共用这一函数，避免 AI 以一套倍率选牌、再以另一套倍率结算。
+ */
+function calculateEnemyScore(hand, ctx = {}) {
   if (!hand) return 0;
   const rate = ctx.aiRate != null ? ctx.aiRate : 0.55;
   let s = (hand.liSum || 0) * (hand.baseQi || 1) * rate;
-  if (hand.cards && hand.cards.length >= 2) {
+  if ((ctx.round || 1) > 12) s *= 1.08;
+  if ((ctx.round || 1) > 18) s *= 1.06;
+  if (hand.type === 'bomb' || hand.type === 'rocket') s *= 1.28;
+  if (hand.type === 'straight' || hand.type === 'consecutive_pairs' || hand.type === 'airplane') s *= 1.06;
+  if (hand.cards && hand.cards.length >= 3) {
     const s0 = hand.cards[0].suit;
-    if (s0 && hand.cards.every(c => c.suit === s0 || c.joker)) s *= 1.12;
+    if (s0 && hand.cards.every(c => c.suit === s0 || c.joker)) s *= 1.1;
   }
-  if (hand.type === 'bomb' || hand.type === 'rocket') s *= 1.32;
-  if (hand.type === 'straight' || hand.type === 'consecutive_pairs' || hand.type === 'airplane') s *= 1.08;
-  return s;
+  if ((ctx.playerChain || 0) >= 2 && (ctx.strategy === 'block' || ctx.strategy === 'aggressive')) s *= 1.1;
+  if (ctx.strategy === 'finish') s *= 1.08;
+  if ((ctx.enemyChain || 0) >= 1) s *= 1 + Math.min(0.12, ctx.enemyChain * 0.04);
+
+  // 低点数单张在早期倍率下曾被 floor 成 1～2 分；至少保留一张最小牌的基础价值。
+  return Math.max(ctx.minScore || 3, Math.floor(s)) + (ctx.enemyFlatBonus || 0);
+}
+
+function aiEstimateScore(hand, ctx = {}) {
+  return calculateEnemyScore(hand, ctx);
 }
 
 function aiRemainingStructure(handCards, play) {
