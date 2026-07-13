@@ -14,6 +14,13 @@
   <meta property="og:image" content="assets/ui/seal.jpg" />
   <link rel="icon" type="image/jpeg" href="assets/ui/seal.jpg" />
   <link rel="apple-touch-icon" href="assets/ui/seal.jpg" />
+  <!-- 首屏图章与五宗徽记优先请求，防止背景图在网络波动时留下空框。 -->
+  <link rel="preload" as="image" href="assets/ui/seal.jpg" fetchpriority="high" />
+  <link rel="preload" as="image" href="assets/sects/yapai.jpg" fetchpriority="high" />
+  <link rel="preload" as="image" href="assets/sects/bianshu.jpg" fetchpriority="high" />
+  <link rel="preload" as="image" href="assets/sects/tianming.jpg" fetchpriority="high" />
+  <link rel="preload" as="image" href="assets/sects/qianji.jpg" fetchpriority="high" />
+  <link rel="preload" as="image" href="assets/sects/dieying.jpg" fetchpriority="high" />
   <title>牌宗 · 五宗归一</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

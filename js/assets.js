@@ -281,12 +281,29 @@ const ASSETS = {
 
 // 已请求资源去重：页面切换时只为当前页面补齐所需素材，避免首屏并发抢占全部图片。
 const PRELOADED_ASSET_URLS = new Set();
+const PENDING_ASSET_URLS = new Set();
+const ASSET_PRELOAD_ATTEMPTS = new Map();
+const MAX_ASSET_PRELOAD_RETRIES = 2;
 
 function preloadAssetUrls(urls) {
   [...new Set(urls.filter(Boolean))].forEach(src => {
-    if (PRELOADED_ASSET_URLS.has(src)) return;
-    PRELOADED_ASSET_URLS.add(src);
+    if (PRELOADED_ASSET_URLS.has(src) || PENDING_ASSET_URLS.has(src)) return;
+    PENDING_ASSET_URLS.add(src);
     const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      PENDING_ASSET_URLS.delete(src);
+      PRELOADED_ASSET_URLS.add(src);
+      ASSET_PRELOAD_ATTEMPTS.delete(src);
+    };
+    img.onerror = () => {
+      PENDING_ASSET_URLS.delete(src);
+      const attempts = (ASSET_PRELOAD_ATTEMPTS.get(src) || 0) + 1;
+      ASSET_PRELOAD_ATTEMPTS.set(src, attempts);
+      if (attempts <= MAX_ASSET_PRELOAD_RETRIES) {
+        setTimeout(() => preloadAssetUrls([src]), 500 * attempts);
+      }
+    };
     img.src = src;
   });
 }
@@ -301,6 +318,7 @@ function preloadAssets() {
     ASSETS.shell.titleHall,
     ASSETS.ui.titleBg,
     ASSETS.ui.seal,
+    ...Object.values(ASSETS.sects),
   ]);
 }
 
