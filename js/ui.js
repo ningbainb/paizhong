@@ -1665,8 +1665,7 @@ const UI = {
 
     if (card.joker) {
       el.innerHTML = `
-        <div class="card-corner tl"><span class="cr">${card.label}</span><span class="cs">王</span></div>
-        <div class="card-corner br"><span class="cr">${card.label}</span><span class="cs">王</span></div>
+        <div class="card-joker-label">${card.label}</div>
         <div class="card-sheen"></div>
       `;
     } else {

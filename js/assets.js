@@ -65,8 +65,8 @@ const ASSETS = {
     rocket: 'assets/hands/rocket.jpg',
   },
   cards: {
-    jokerSmall: 'assets/cards/joker_small.jpg',
-    jokerBig: 'assets/cards/joker_big.jpg',
+    jokerSmall: 'assets/cards/joker_small_v2.jpg',
+    jokerBig: 'assets/cards/joker_big_v2.jpg',
   },
   xinfa: {
     single: 'assets/xinfa/single.jpg',

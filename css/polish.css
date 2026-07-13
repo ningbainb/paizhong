@@ -397,21 +397,37 @@
 .card.joker-red {
   background:
     linear-gradient(rgba(255,255,255,0.04), rgba(255,255,255,0.04)),
-    url('../assets/cards/joker_big.jpg') center / cover no-repeat;
+    url('../assets/cards/joker_big_v2.jpg') center / cover no-repeat;
 }
 .card.joker-black {
   background:
     linear-gradient(rgba(255,255,255,0.04), rgba(255,255,255,0.04)),
-    url('../assets/cards/joker_small.jpg') center / cover no-repeat;
+    url('../assets/cards/joker_small_v2.jpg') center / cover no-repeat;
 }
-.card.joker-red .card-corner,
-.card.joker-black .card-corner {
-  background: rgba(255, 248, 231, 0.78);
+.card-joker-label {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 2;
+  padding: 2px 4px;
   border: 1px solid rgba(117, 79, 24, 0.42);
   border-radius: 4px;
+  background: rgba(255, 249, 235, 0.88);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
-  padding: 1px 2px;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
   text-shadow: 0 1px 1px rgba(255, 255, 255, 0.7);
+}
+.card.joker-red .card-joker-label { color: #b52f25; }
+.card.joker-black .card-joker-label { color: #222; }
+.card.table-card .card-joker-label {
+  top: 4px;
+  left: 4px;
+  padding: 2px 3px;
+  font-size: 12px;
 }
 .card.table-card {
   width: 66px;

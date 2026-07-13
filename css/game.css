@@ -1108,13 +1108,13 @@ kbd {
   color: var(--red);
   background:
     linear-gradient(rgba(255,255,255,0.04), rgba(255,255,255,0.04)),
-    url('../assets/cards/joker_big.jpg') center / cover no-repeat;
+    url('../assets/cards/joker_big_v2.jpg') center / cover no-repeat;
 }
 .card.joker-black {
   color: #2a2a2a;
   background:
     linear-gradient(rgba(255,255,255,0.04), rgba(255,255,255,0.04)),
-    url('../assets/cards/joker_small.jpg') center / cover no-repeat;
+    url('../assets/cards/joker_small_v2.jpg') center / cover no-repeat;
 }
 
 .card .rank {
