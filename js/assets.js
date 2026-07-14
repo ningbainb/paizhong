@@ -289,12 +289,14 @@ const PENDING_ASSET_URLS = new Set();
 const ASSET_PRELOAD_ATTEMPTS = new Map();
 const MAX_ASSET_PRELOAD_RETRIES = 2;
 
-function preloadAssetUrls(urls) {
+function preloadAssetUrls(urls, options = {}) {
+  const priority = options.priority || 'low';
   [...new Set(urls.filter(Boolean))].forEach(src => {
     if (PRELOADED_ASSET_URLS.has(src) || PENDING_ASSET_URLS.has(src)) return;
     PENDING_ASSET_URLS.add(src);
     const img = new Image();
     img.decoding = 'async';
+    if ('fetchPriority' in img) img.fetchPriority = priority;
     img.onload = () => {
       PENDING_ASSET_URLS.delete(src);
       PRELOADED_ASSET_URLS.add(src);
@@ -305,23 +307,30 @@ function preloadAssetUrls(urls) {
       const attempts = (ASSET_PRELOAD_ATTEMPTS.get(src) || 0) + 1;
       ASSET_PRELOAD_ATTEMPTS.set(src, attempts);
       if (attempts <= MAX_ASSET_PRELOAD_RETRIES) {
-        setTimeout(() => preloadAssetUrls([src]), 500 * attempts);
+        setTimeout(() => preloadAssetUrls([src], options), 500 * attempts);
       }
     };
     img.src = src;
   });
 }
 
+function deferAssetPreload(urls, options = {}) {
+  const run = () => preloadAssetUrls(urls, options);
+  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(run, { timeout: 1400 });
+  } else {
+    setTimeout(run, 240);
+  }
+}
+
 /** 首屏只预取壳层与标题页资源；页面本身仍会正常加载其 CSS 背景。 */
 function preloadAssets() {
-  preloadAssetUrls([
+  preloadAssetUrls([ASSETS.shell.titleHall, ASSETS.ui.seal], { priority: 'high' });
+  deferAssetPreload([
     ASSETS.shell.appBg,
     ASSETS.shell.header,
     ASSETS.shell.outerFrame,
     ASSETS.shell.contentFrame,
-    ASSETS.shell.titleHall,
-    ASSETS.ui.titleBg,
-    ASSETS.ui.seal,
     ...Object.values(ASSETS.sects),
   ]);
 }
@@ -329,13 +338,14 @@ function preloadAssets() {
 /** 在进入对应页面后补齐该页面的图标和插画，不抢占首屏带宽。 */
 function preloadAssetsForScreen(screen) {
   const values = (obj) => Object.values(obj || {});
+  const pick = (obj, keys) => keys.map(key => obj && obj[key]).filter(Boolean);
   let urls = [];
   switch (screen) {
     case 'mode':
       urls = [ASSETS.ui.modeBg, ...values(ASSETS.diff)];
       break;
     case 'char':
-      urls = [ASSETS.ui.charBg, ...values(ASSETS.sects), ...values(ASSETS.chars)];
+      urls = [ASSETS.ui.charBg];
       break;
     case 'map':
       urls = [ASSETS.ui.mapBg];
@@ -343,24 +353,25 @@ function preloadAssetsForScreen(screen) {
     case 'qipai':
     case 'codex':
       urls = [ASSETS.ui.codexBg, ASSETS.ui.frameCommon, ASSETS.ui.frameRare, ASSETS.ui.frameLegend,
-        ASSETS.ui.frameCursed, ...values(ASSETS.qipai)];
+        ASSETS.ui.frameCursed];
       break;
     case 'battle':
       urls = [ASSETS.shell.battleBg, ASSETS.shell.sidebar, ASSETS.shell.handTray, ASSETS.shell.tableFrame,
         ASSETS.ui.tableFelt, ASSETS.ui.cardBack, ASSETS.ui.enemy, ASSETS.ui.boss,
-        ...values(ASSETS.icons), ...values(ASSETS.hands), ...values(ASSETS.cards)];
+        ...pick(ASSETS.icons, ['draw', 'pass', 'play', 'hint', 'jinnang']),
+        ...values(ASSETS.cards)];
       break;
     case 'shop':
-      urls = [ASSETS.ui.shopBg, ...values(ASSETS.xinfa), ...values(ASSETS.qipai)];
+      urls = [ASSETS.ui.shopBg];
       break;
     case 'result':
       urls = [ASSETS.ui.resultBg, ...values(ASSETS.fx)];
       break;
     case 'help':
-      urls = [ASSETS.ui.helpBg, ...values(ASSETS.hands)];
+      urls = [ASSETS.ui.helpBg];
       break;
     case 'achieve':
-      urls = [...values(ASSETS.achieve)];
+      urls = [];
       break;
     case 'meta':
       urls = [ASSETS.ui.metaBg];
@@ -374,5 +385,5 @@ function preloadAssetsForScreen(screen) {
     default:
       return;
   }
-  preloadAssetUrls(urls);
+  deferAssetPreload(urls);
 }
