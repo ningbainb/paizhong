@@ -715,3 +715,1042 @@ body {
   width: 0 !important;
   height: 0 !important;
 }
+
+/* ========================================================================
+   Mobile comfort pass
+   Keep the table as the visual focus and reserve a stable touch zone for
+   the hand. This block intentionally comes last so it can tame the older
+   breakpoint overrides above without changing the desktop composition.
+   ======================================================================== */
+
+button,
+[role="button"],
+.card {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (max-width: 780px) {
+  :root {
+    --header-h: 48px;
+    --card-w: 52px;
+    --card-h: 74px;
+  }
+
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
+  .app-header {
+    height: max(48px, calc(48px + env(safe-area-inset-top, 0px))) !important;
+    min-height: 48px;
+    padding: env(safe-area-inset-top, 0px) 10px 0 !important;
+    gap: 8px;
+  }
+
+  .brand {
+    flex: 0 0 auto;
+    gap: 8px;
+  }
+
+  .header-nav {
+    padding: 2px 0 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .header-nav .nav-link {
+    min-height: 40px;
+    scroll-snap-align: start;
+  }
+
+  .nav-link:active,
+  .title-link:active,
+  .title-mode-card:active,
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .content-shell {
+    padding: 16px 12px max(20px, env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .content-shell.wide {
+    width: 100%;
+  }
+
+  .section-head {
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .section-head > .btn {
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+
+  .section-title {
+    font-size: clamp(21px, 6vw, 26px);
+    line-height: 1.18;
+  }
+
+  .section-desc {
+    max-width: 70vw;
+    font-size: 12px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  /* Title screen: lead with the primary action and keep the side panel calm. */
+  #screen-title .title-layout {
+    min-height: 0;
+    padding: 16px 14px max(24px, env(safe-area-inset-bottom, 0px));
+    gap: 18px;
+  }
+
+  #screen-title .title-main {
+    font-size: clamp(36px, 12vw, 48px) !important;
+    letter-spacing: clamp(5px, 2vw, 8px) !important;
+  }
+
+  #screen-title .title-cta-main {
+    min-height: 58px;
+  }
+
+  #screen-title .title-cta-main .cta-hint {
+    font-size: 10px;
+  }
+
+  #screen-title .title-side-panel {
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+  }
+
+  /* Battle page is a four-row touch layout: status / table / build / hand. */
+  #screen-battle {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #screen-battle .battle-desktop {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(150px, 1fr) auto auto;
+    grid-template-areas:
+      "status"
+      "table"
+      "build"
+      "hand";
+    gap: 7px;
+    height: 100%;
+    min-height: 0;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  #screen-battle .battle-table {
+    display: contents;
+  }
+
+  #screen-battle .battle-side.left {
+    grid-area: status;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "stage menu"
+      "race race"
+      "resources resources";
+    align-items: center;
+    gap: 6px 10px !important;
+    width: 100%;
+    max-height: none;
+    min-height: 0;
+    padding: 8px 10px;
+    overflow: hidden;
+    border-radius: 14px;
+  }
+
+  #screen-battle .battle-side.left > .side-block:nth-child(1) {
+    grid-area: stage;
+    min-width: 0;
+  }
+
+  #screen-battle .battle-side.left > .side-block:nth-child(2) {
+    grid-area: race;
+    min-width: 0;
+  }
+
+  #screen-battle .battle-side.left > .side-block:nth-child(3) {
+    grid-area: resources;
+    min-width: 0;
+  }
+
+  #screen-battle .battle-side.left > .side-block.grow {
+    display: none;
+  }
+
+  #screen-battle #btn-battle-menu {
+    grid-area: menu;
+    width: auto !important;
+    min-height: 36px;
+    padding: 8px 10px;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+
+  #screen-battle .side-kicker {
+    margin-bottom: 3px;
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+
+  #screen-battle .side-title {
+    overflow: hidden;
+    font-size: 15px;
+    letter-spacing: 1px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #screen-battle .side-sub {
+    margin-top: 2px;
+    font-size: 10px;
+  }
+
+  #screen-battle .race-desc,
+  #screen-battle .race-tip {
+    display: none;
+  }
+
+  #screen-battle .score-race {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+  }
+
+  #screen-battle .score-race .race-row {
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  #screen-battle .score-race .race-row.is-player {
+    grid-column: 1;
+  }
+
+  #screen-battle .score-race .race-vs {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 8px;
+    letter-spacing: 1px;
+  }
+
+  #screen-battle .score-race .race-row.is-enemy {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  #screen-battle .race-head {
+    margin-bottom: 4px;
+  }
+
+  #screen-battle .race-who,
+  #screen-battle .score-race .score-num {
+    font-size: 10px;
+  }
+
+  #screen-battle .score-race .bar-track {
+    height: 6px;
+  }
+
+  #screen-battle .resource-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin-bottom: 5px;
+  }
+
+  #screen-battle .res-cell {
+    min-width: 0;
+    padding: 5px 4px;
+  }
+
+  #screen-battle .res-label {
+    overflow: hidden;
+    font-size: 8px;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #screen-battle .res-value {
+    font-size: 11px;
+  }
+
+  #screen-battle .battle-info-row {
+    max-height: 22px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  #screen-battle .battle-info-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  #screen-battle .battle-info-row .chip {
+    flex: 0 0 auto;
+  }
+
+  #screen-battle .table-frame-wrap {
+    grid-area: table;
+    min-height: 0;
+    padding: 5px !important;
+    border-radius: 16px !important;
+  }
+
+  #screen-battle .table-felt {
+    min-height: 0;
+    padding: 8px !important;
+    border-radius: 12px !important;
+    gap: 3px;
+  }
+
+  #screen-battle .felt-ring {
+    inset: 8px;
+    border-radius: 10px;
+  }
+
+  #screen-battle .enemy-area {
+    padding-bottom: 4px;
+  }
+
+  #screen-battle .enemy-header-row {
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+
+  #screen-battle .enemy-portrait {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 10px;
+  }
+
+  #screen-battle .enemy-name {
+    font-size: 12px;
+    letter-spacing: 2px;
+  }
+
+  #screen-battle .enemy-label {
+    gap: 1px;
+    font-size: 10px;
+  }
+
+  #screen-battle .enemy-cards {
+    min-height: 32px;
+    padding: 2px 0;
+  }
+
+  #screen-battle .card-back {
+    width: 25px !important;
+    height: 36px !important;
+    margin-left: -13px;
+  }
+
+  #screen-battle .table-area {
+    min-height: 72px;
+    gap: 5px;
+  }
+
+  #screen-battle .last-play {
+    max-width: 100%;
+    padding: 0 5px;
+  }
+
+  #screen-battle .last-play .card.table-card,
+  #screen-battle .card.table-card {
+    width: 45px;
+    height: 64px;
+  }
+
+  #screen-battle .last-play .card.table-card {
+    margin-left: -3px;
+  }
+
+  #screen-battle .last-play.last-play-crowded .card.table-card {
+    margin-left: -13px;
+  }
+
+  #screen-battle .last-play-info,
+  #screen-battle .battle-phase {
+    font-size: 10px;
+    line-height: 1.25;
+  }
+
+  #screen-battle .last-play-info .score-pop {
+    font-size: 28px;
+  }
+
+  #screen-battle .util-tray {
+    flex: 0 0 auto;
+    max-height: 92px;
+    margin-top: 0;
+    padding: 5px 7px 6px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  #screen-battle .util-head {
+    align-items: center;
+    margin-bottom: 4px;
+  }
+
+  #screen-battle .util-title {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  #screen-battle .util-sub {
+    display: none;
+  }
+
+  #screen-battle .util-meta {
+    font-size: 9px;
+  }
+
+  #screen-battle .jiguan-bar,
+  #screen-battle .jinnang-bar {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 5px;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  #screen-battle .jiguan-bar::-webkit-scrollbar,
+  #screen-battle .jinnang-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  #screen-battle .jiguan-chip,
+  #screen-battle .jinnang-chip {
+    min-height: 36px;
+    padding: 5px 8px 5px 5px;
+    font-size: 10px;
+  }
+
+  #screen-battle .jiguan-chip .chip-desc {
+    display: none;
+  }
+
+  #screen-battle .chip-icon {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  #screen-battle .battle-side.right {
+    grid-area: build;
+    display: flex !important;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    height: 58px;
+    min-height: 0;
+    max-height: 58px;
+    gap: 8px;
+    padding: 7px 9px;
+    overflow: hidden;
+    border-radius: 12px;
+  }
+
+  #screen-battle .battle-side.right > .side-block:first-child {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  #screen-battle .battle-side.right > .side-block:nth-child(n+2) {
+    display: none;
+  }
+
+  #screen-battle .battle-side.right .side-kicker {
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  #screen-battle .battle-side.right .build-list {
+    display: flex;
+    min-width: 0;
+    max-height: 38px;
+    gap: 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  #screen-battle .battle-side.right .build-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  #screen-battle .battle-side.right .build-list .build-item {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 5px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.18);
+    font-size: 10px;
+  }
+
+  #screen-battle .battle-side.right .build-list .build-item b {
+    font-size: 10px;
+  }
+
+  #screen-battle .hand-area {
+    grid-area: hand;
+    position: relative;
+    z-index: 8;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 7px 8px max(8px, env(safe-area-inset-bottom, 0px));
+    border-radius: 14px 14px 10px 10px;
+  }
+
+  #screen-battle .hand-toolbar {
+    min-height: 30px;
+    margin-bottom: 0;
+    gap: 6px;
+    font-size: 10px;
+  }
+
+  #screen-battle .hand-hint {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #screen-battle .hand-tools {
+    flex: 0 0 auto;
+    gap: 4px;
+  }
+
+  #screen-battle .hand-tools .btn {
+    min-height: 36px;
+    padding: 6px 9px;
+    font-size: 11px;
+  }
+
+  #screen-battle .hand-cards {
+    align-items: flex-end;
+    justify-content: flex-start;
+    min-height: calc(var(--card-h) + 34px) !important;
+    padding: 22px 8px 8px !important;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+  }
+
+  #screen-battle .hand-cards .card {
+    margin-left: var(--fan-ml, -20px) !important;
+  }
+
+  #screen-battle .hand-cards .card:hover {
+    transform:
+      translateY(var(--fan-y, 0px))
+      rotate(var(--fan-rot, 0deg));
+  }
+
+  #screen-battle .hand-cards .card.selected,
+  #screen-battle .hand-cards .card.selected:hover {
+    transform:
+      translateY(calc(var(--fan-y, 0px) - 20px))
+      rotate(calc(var(--fan-rot, 0deg) * 0.35))
+      scale(1.04);
+  }
+
+  #screen-battle .action-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 6px;
+    padding-top: 5px;
+  }
+
+  #screen-battle .action-bar .btn {
+    width: 100%;
+    min-width: 0 !important;
+    min-height: 46px;
+    padding: 10px 5px !important;
+    font-size: 13px !important;
+    letter-spacing: 1px;
+    border-radius: 10px;
+  }
+
+  #screen-battle #btn-draw {
+    font-size: 11px !important;
+    letter-spacing: 0 !important;
+  }
+
+  /* Keep dialogs and long-form screens inside the safe area. */
+  .modal-overlay,
+  .save-modal-overlay,
+  .guide-overlay,
+  .fx-overlay {
+    padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .modal,
+  .save-modal-card,
+  .guide-card {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  :root {
+    --card-w: 48px;
+    --card-h: 68px;
+  }
+
+  #screen-battle .battle-desktop {
+    grid-template-rows: auto minmax(132px, 1fr) auto auto;
+  }
+
+  #screen-battle .battle-side.left {
+    padding: 7px 8px;
+  }
+
+  #screen-battle .resource-grid {
+    gap: 3px;
+  }
+
+  #screen-battle .res-cell {
+    padding: 4px 3px;
+  }
+
+  #screen-battle .hand-cards {
+    padding-inline: 5px !important;
+  }
+
+  #screen-battle .action-bar .btn {
+    padding-inline: 3px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  :root {
+    --card-w: 44px;
+    --card-h: 64px;
+  }
+
+  #screen-battle .battle-desktop {
+    gap: 5px;
+    padding-inline: 6px;
+    grid-template-rows: auto minmax(108px, 1fr) auto auto;
+  }
+
+  #screen-battle .battle-side.left {
+    grid-template-areas: "stage menu" "race race";
+  }
+
+  #screen-battle .battle-side.left > .side-block:nth-child(3) {
+    display: none;
+  }
+
+  #screen-battle .battle-side.right {
+    height: 52px;
+    max-height: 52px;
+  }
+
+  #screen-battle .hand-tools .btn {
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 900px) and (max-height: 480px) and (orientation: landscape) {
+  :root {
+    --header-h: 42px;
+    --card-w: 48px;
+    --card-h: 68px;
+  }
+
+  .app-header {
+    height: max(42px, calc(42px + env(safe-area-inset-top, 0px))) !important;
+    min-height: 42px;
+  }
+
+  #screen-battle .battle-desktop {
+    grid-template-rows: auto minmax(112px, 1fr) auto auto;
+    gap: 5px;
+    padding-top: 5px;
+  }
+
+  #screen-battle .battle-side.left {
+    grid-template-areas: "stage menu" "race race";
+    grid-template-rows: auto auto;
+    padding: 5px 8px;
+  }
+
+  #screen-battle .battle-side.left > .side-block:nth-child(3) {
+    display: none;
+  }
+
+  #screen-battle .table-felt {
+    padding: 5px !important;
+  }
+
+  #screen-battle .enemy-area {
+    padding-bottom: 1px;
+  }
+
+  #screen-battle .enemy-portrait {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  #screen-battle .util-tray {
+    max-height: 58px;
+    padding-block: 3px;
+  }
+
+  #screen-battle .hand-area {
+    padding-block: 4px max(5px, env(safe-area-inset-bottom, 0px));
+  }
+
+  #screen-battle .hand-toolbar {
+    min-height: 24px;
+  }
+
+  #screen-battle .hand-cards {
+    min-height: calc(var(--card-h) + 22px) !important;
+    padding-block: 11px 4px !important;
+  }
+
+  #screen-battle .action-bar .btn {
+    min-height: 38px;
+    padding-block: 6px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-link:active,
+  .title-link:active,
+  .title-mode-card:active,
+  .btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------------
+   Mobile air pass: reduce HUD density and let the table breathe.
+   ------------------------------------------------------------------------ */
+@media (max-width: 780px) {
+  #screen-title .title-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  #screen-title .stat-card {
+    min-height: 58px;
+    padding: 10px 8px;
+  }
+
+  #screen-title .stat-card span {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  #screen-title .stat-card strong {
+    font-size: 18px;
+  }
+
+  #screen-battle .battle-desktop {
+    grid-template-rows: auto minmax(180px, 1fr) auto auto;
+    gap: 10px;
+    padding: 12px 10px max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  #screen-battle .battle-side.left {
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "stage menu"
+      "race race";
+    gap: 9px 12px !important;
+    padding: 12px 14px;
+    border-radius: 18px;
+  }
+
+  #screen-battle .battle-side.left > .side-block:nth-child(3) {
+    display: none;
+  }
+
+  #screen-battle .side-kicker {
+    margin-bottom: 5px;
+    font-size: 10px;
+    letter-spacing: 2px;
+  }
+
+  #screen-battle .side-title {
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+
+  #screen-battle .side-sub {
+    font-size: 11px;
+  }
+
+  #screen-battle #btn-battle-menu {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+
+  #screen-battle .score-race {
+    gap: 9px;
+  }
+
+  #screen-battle .score-race .race-row {
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+
+  #screen-battle .race-who,
+  #screen-battle .score-race .score-num {
+    font-size: 11px;
+  }
+
+  #screen-battle .table-frame-wrap {
+    padding: 8px !important;
+    border-radius: 20px !important;
+  }
+
+  #screen-battle .table-felt {
+    padding: 12px !important;
+    border-radius: 16px !important;
+    gap: 7px;
+  }
+
+  #screen-battle .felt-ring {
+    inset: 10px;
+    border-radius: 13px;
+  }
+
+  #screen-battle .enemy-area {
+    padding-bottom: 7px;
+  }
+
+  #screen-battle .enemy-header-row {
+    gap: 10px;
+    margin-bottom: 7px;
+  }
+
+  #screen-battle .enemy-portrait {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  #screen-battle .enemy-name {
+    font-size: 13px;
+  }
+
+  #screen-battle .enemy-label {
+    font-size: 11px;
+  }
+
+  #screen-battle .enemy-cards {
+    min-height: 40px;
+    padding: 4px 0;
+  }
+
+  #screen-battle .card-back {
+    width: 28px !important;
+    height: 40px !important;
+    margin-left: -14px;
+  }
+
+  #screen-battle .table-area {
+    min-height: 110px;
+    gap: 9px;
+  }
+
+  #screen-battle .last-play .card.table-card,
+  #screen-battle .card.table-card {
+    width: 48px;
+    height: 68px;
+  }
+
+  #screen-battle .last-play.last-play-crowded .card.table-card {
+    margin-left: -11px;
+  }
+
+  #screen-battle .util-tray {
+    max-height: 86px;
+    margin: 4px 2px 0;
+    padding: 8px 10px;
+    border-radius: 14px;
+  }
+
+  #screen-battle .jiguan-chip,
+  #screen-battle .jinnang-chip {
+    min-height: 40px;
+    padding: 6px 10px 6px 6px;
+  }
+
+  #screen-battle .battle-side.right {
+    height: 52px;
+    max-height: 52px;
+    padding: 8px 12px;
+    border-radius: 14px;
+  }
+
+  #screen-battle .hand-area {
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom, 0px));
+    border-radius: 18px 18px 12px 12px;
+  }
+
+  #screen-battle .hand-toolbar {
+    min-height: 34px;
+    margin-bottom: 2px;
+    font-size: 11px;
+  }
+
+  #screen-battle .hand-hint {
+    font-size: 11px;
+  }
+
+  #screen-battle .hand-cards {
+    min-height: calc(var(--card-h) + 44px) !important;
+    padding: 28px 10px 12px !important;
+  }
+
+  #screen-battle .hand-cards .card,
+  #screen-battle .hand-cards .card:first-child {
+    margin-left: -14px !important;
+  }
+
+  #screen-battle .hand-cards .card:first-child {
+    margin-left: 0 !important;
+  }
+
+  #screen-battle .hand-cards .card.selected,
+  #screen-battle .hand-cards .card.selected:hover {
+    transform:
+      translateY(calc(var(--fan-y, 0px) - 24px))
+      rotate(calc(var(--fan-rot, 0deg) * 0.35))
+      scale(1.04);
+  }
+
+  #screen-battle .action-bar {
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  #screen-battle .action-bar .btn {
+    min-height: 48px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  #screen-battle .battle-desktop {
+    grid-template-rows: auto minmax(136px, 1fr) auto auto;
+    gap: 7px;
+    padding: 8px 7px max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  #screen-battle .battle-side.left {
+    padding: 9px 10px;
+  }
+
+  #screen-battle .table-frame-wrap {
+    padding: 6px !important;
+  }
+
+  #screen-battle .table-felt {
+    padding: 9px !important;
+  }
+
+  #screen-battle .battle-side.right {
+    height: 46px;
+    max-height: 46px;
+    padding-block: 6px;
+  }
+
+  #screen-battle .hand-area {
+    padding: 8px 9px max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  #screen-battle .hand-toolbar {
+    min-height: 28px;
+  }
+
+  #screen-battle .hand-cards {
+    min-height: calc(var(--card-h) + 34px) !important;
+    padding-block: 22px 8px !important;
+  }
+
+  #screen-battle .action-bar {
+    gap: 5px;
+    padding-top: 5px;
+  }
+
+  #screen-battle .action-bar .btn {
+    min-height: 44px;
+  }
+
+  #screen-battle .hand-cards {
+    padding-inline: 6px !important;
+  }
+
+  #screen-battle .hand-cards .card {
+    margin-left: -12px !important;
+  }
+}
+
+@media (max-width: 900px) and (max-height: 480px) and (orientation: landscape) {
+  #screen-battle .battle-desktop {
+    grid-template-rows: auto minmax(126px, 1fr) auto auto;
+    gap: 7px;
+    padding-block: 7px;
+  }
+
+  #screen-battle .battle-side.left {
+    padding: 7px 10px;
+  }
+
+  #screen-battle .table-felt {
+    padding: 8px !important;
+  }
+
+  #screen-battle .table-area {
+    min-height: 80px;
+  }
+
+  #screen-battle .hand-area {
+    padding-block: 6px max(7px, env(safe-area-inset-bottom, 0px));
+  }
+
+  #screen-battle .hand-cards {
+    min-height: calc(var(--card-h) + 28px) !important;
+    padding-block: 16px 6px !important;
+  }
+
+  #screen-battle .action-bar {
+    padding-top: 5px;
+  }
+
+  #screen-battle .action-bar .btn {
+    min-height: 42px;
+  }
+}
