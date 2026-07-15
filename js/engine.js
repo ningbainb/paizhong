@@ -48,6 +48,58 @@ function createDeck(rng = Math.random) {
   return shuffle(deck, rng);
 }
 
+/**
+ * 残局牌面编码 → 卡牌对象
+ * 例：H3 红桃3 · S10 黑桃10 · DJ 方块J · CA 梅花A · BJ 小王 · RJ 大王
+ */
+function createCardFromCode(code, idSuffix = '') {
+  const raw = String(code || '').trim().toUpperCase();
+  if (!raw) return null;
+
+  if (raw === 'BJ' || raw === 'RJ') {
+    const r = RANKS.find(x => x.id === raw);
+    if (!r) return null;
+    return {
+      id: `pz_${raw}_${idSuffix || uid()}`,
+      rank: r.id,
+      label: r.label,
+      order: r.order,
+      li: r.li,
+      suit: 'joker',
+      suitSymbol: '🃏',
+      color: raw === 'RJ' ? 'red' : 'black',
+      joker: true,
+      jokerType: raw === 'RJ' ? 'red' : 'black',
+      _frozen: false,
+    };
+  }
+
+  const suitMap = { S: 'spade', H: 'heart', C: 'club', D: 'diamond' };
+  const suitCh = raw[0];
+  const rankId = raw.slice(1);
+  const suit = SUITS.find(s => s.id === suitMap[suitCh]);
+  const rank = RANKS.find(r => r.id === rankId && !r.joker);
+  if (!suit || !rank) return null;
+  return {
+    id: `pz_${raw}_${idSuffix || uid()}`,
+    rank: rank.id,
+    label: rank.label,
+    order: rank.order,
+    li: rank.li,
+    suit: suit.id,
+    suitSymbol: suit.symbol,
+    color: suit.color,
+    joker: false,
+    _frozen: false,
+  };
+}
+
+function createCardsFromCodes(codes = []) {
+  return (codes || [])
+    .map((c, i) => createCardFromCode(c, String(i)))
+    .filter(Boolean);
+}
+
 function sortCards(cards) {
   return cards.slice().sort((a, b) => a.order - b.order || a.suit.localeCompare(b.suit));
 }

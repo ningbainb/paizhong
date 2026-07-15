@@ -1519,6 +1519,112 @@ kbd {
   color: var(--gold-dim);
 }
 
+/* ===== 残局论道 ===== */
+.puzzle-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.puzzle-sum-card {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.puzzle-sum-card span {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+.puzzle-sum-card strong {
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--gold-light);
+}
+.puzzle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  overflow: auto;
+  flex: 1;
+  align-content: start;
+  padding-bottom: 12px;
+}
+.puzzle-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(165deg, rgba(30, 36, 48, 0.95), rgba(14, 18, 26, 0.95));
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+.puzzle-card:hover {
+  border-color: rgba(212, 175, 55, 0.4);
+  transform: translateY(-2px);
+}
+.puzzle-card:active { transform: scale(0.98); }
+.puzzle-card.is-cleared {
+  border-color: rgba(61, 207, 154, 0.28);
+}
+.puzzle-card.is-perfect {
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.28), 0 8px 24px rgba(212, 175, 55, 0.12);
+}
+.puzzle-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.puzzle-idx {
+  font-size: 12px;
+  color: var(--gold-dim);
+  letter-spacing: 1px;
+}
+.puzzle-diff {
+  font-size: 11px;
+  color: var(--gold-light);
+  letter-spacing: 1px;
+}
+.puzzle-card h4 {
+  font-family: var(--display);
+  font-size: 17px;
+  color: var(--gold-light);
+  letter-spacing: 2px;
+  margin: 0;
+}
+.puzzle-card p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+  flex: 1;
+}
+.puzzle-card-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.puzzle-stars {
+  color: var(--gold);
+  letter-spacing: 2px;
+  font-size: 14px;
+}
+.puzzle-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .achieve-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

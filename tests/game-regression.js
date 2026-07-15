@@ -47,6 +47,26 @@ const result = vm.runInContext(`
     return createDeck(g.random.bind(g)).map(c => [c.rank, c.suit]);
   };
 
+  expect('puzzle cards parse and open', () => {
+    assert.ok(createCardFromCode('H3'));
+    assert.ok(createCardFromCode('S10'));
+    assert.ok(createCardFromCode('BJ'));
+    assert.ok(Array.isArray(PUZZLE_POOL) && PUZZLE_POOL.length >= 5);
+    const g = new PaiZongGame();
+    const first = PUZZLE_POOL[0];
+    const res = g.startPuzzle(first.id);
+    assert.equal(res.ok, true);
+    assert.equal(g.run.isPuzzle, true);
+    assert.ok(g.battle.playerHand.length > 0);
+    g.battle.playerScore = g.battle.threshold;
+    const win = g.onWin();
+    assert.equal(win.won, true);
+    assert.equal(win.isPuzzle, true);
+    assert.ok(win.stars >= 1 && win.stars <= 3);
+    assert.ok((g.meta.puzzles[first.id]?.stars || 0) >= 1);
+    g.abandonRun();
+  });
+
   expect('daily deck is deterministic', () => {
     assert.deepEqual(deckFor(123456), deckFor(123456));
     assert.notDeepEqual(deckFor(123456), deckFor(654321));

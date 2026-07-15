@@ -52,6 +52,7 @@ class PaiZongGame {
       lastRunSetup: null, // { characterId, mode, difficulty }
       endlessMilestones: {}, // floor -> claimed ts
       eventCount: 0, // 累计关间奇遇
+      puzzles: {}, // id -> { stars, bestRounds, clears, firstClearAt }
     };
   }
 
@@ -82,6 +83,7 @@ class PaiZongGame {
     if (this.meta.lastRunSetup === undefined) this.meta.lastRunSetup = null;
     if (!this.meta.endlessMilestones) this.meta.endlessMilestones = {};
     if (this.meta.eventCount === undefined) this.meta.eventCount = 0;
+    if (!this.meta.puzzles) this.meta.puzzles = {};
   }
 
   isTutorialActive() {
@@ -208,6 +210,8 @@ class PaiZongGame {
       isDaily: !!r.isDaily,
       isEndless: !!r.isEndless,
       isWeekly: !!r.isWeekly,
+      isPuzzle: !!r.isPuzzle,
+      puzzleId: r.puzzleId || null,
       weekly: r.weekly || null,
       endlessFloor: r.endlessFloor || 0,
       realmIndex: r.realmIndex || 0,
@@ -266,6 +270,11 @@ class PaiZongGame {
       isDaily: !!data.isDaily,
       isEndless: !!data.isEndless,
       isWeekly: !!data.isWeekly,
+      isPuzzle: !!data.isPuzzle,
+      puzzleId: data.puzzleId || null,
+      puzzle: (data.isPuzzle && data.puzzleId && typeof getPuzzleById === 'function')
+        ? getPuzzleById(data.puzzleId)
+        : null,
       weekly: data.weekly || null,
       endlessFloor: data.endlessFloor || 0,
       realmIndex: data.realmIndex || 0,
@@ -443,7 +452,10 @@ class PaiZongGame {
       qipai: '选奇牌',
     }[data.phase] || '进行中';
     let stage = '';
-    if (r.isEndless) stage = `无尽${r.endlessFloor || 1}层`;
+    if (r.isPuzzle) {
+      const pz = typeof getPuzzleById === 'function' ? getPuzzleById(r.puzzleId) : null;
+      stage = pz ? `残局·${pz.name}` : '残局';
+    } else if (r.isEndless) stage = `无尽${r.endlessFloor || 1}层`;
     else stage = `第${(r.stagesCleared || 0) + 1}关`;
     return {
       phase: data.phase,
@@ -616,6 +628,12 @@ class PaiZongGame {
       }
       case 'weeklyDone': cur = this.meta.weeklyDoneCount || 0; break;
       case 'events': cur = this.meta.eventCount || 0; break;
+      case 'puzzles': cur = this.puzzleClearedCount(); break;
+      case 'puzzlesFull':
+        cur = this.puzzleClearedCount();
+        target = (typeof PUZZLE_POOL !== 'undefined') ? PUZZLE_POOL.length : target || 1;
+        break;
+      case 'puzzleStars3': cur = this.puzzleThreeStarCount(); break;
       case 'realms': {
         const vals = Object.values(this.meta.realmBest || {});
         cur = vals.length ? Math.max(...vals) : 0;
@@ -648,6 +666,10 @@ class PaiZongGame {
     tryA('collector', (this.meta.seenQipai || []).length >= 40);
     tryA('collector_full', (this.meta.seenQipai || []).length >= QIPAI_POOL.length);
     tryA('all_chars', CHARACTERS.every(c => (this.meta.charWins[c.id] || 0) > 0));
+    tryA('puzzle1', this.puzzleClearedCount() >= 1);
+    tryA('puzzle5', this.puzzleClearedCount() >= 5);
+    tryA('puzzle_all', typeof PUZZLE_POOL !== 'undefined' && this.puzzleClearedCount() >= PUZZLE_POOL.length);
+    tryA('puzzle_master', this.puzzleThreeStarCount() >= 3);
     const be = this.meta.bestEndless || 0;
     tryA('endless10', be >= 10);
     tryA('endless20', be >= 20);
@@ -690,6 +712,255 @@ class PaiZongGame {
     let h = 0;
     for (let i = 0; i < key.length; i++) h = ((h << 5) - h) + key.charCodeAt(i);
     return Math.abs(h);
+  }
+
+  /** 残局进度快照 */
+  getPuzzleRecord(id) {
+    return (this.meta.puzzles && this.meta.puzzles[id]) || null;
+  }
+
+  puzzleClearedCount() {
+    const map = this.meta.puzzles || {};
+    return Object.keys(map).filter(id => (map[id]?.stars || 0) >= 1).length;
+  }
+
+  puzzleThreeStarCount() {
+    const map = this.meta.puzzles || {};
+    return Object.keys(map).filter(id => (map[id]?.stars || 0) >= 3).length;
+  }
+
+  /**
+   * 根据回合数评星：3 / 2 / 1
+   * starsByRound: [三星上限, 二星上限]
+   */
+  ratePuzzleStars(puzzle, rounds) {
+    const caps = puzzle.starsByRound || [3, 6];
+    const r = Math.max(1, rounds || 1);
+    if (r <= (caps[0] || 3)) return 3;
+    if (r <= (caps[1] || 6)) return 2;
+    return 1;
+  }
+
+  /**
+   * 启动固定残局（不走地图/商店）
+   * @param {string} puzzleId
+   */
+  startPuzzle(puzzleId) {
+    const p = typeof getPuzzleById === 'function' ? getPuzzleById(puzzleId) : null;
+    if (!p) return { ok: false, reason: '残局不存在' };
+    if (typeof createCardsFromCodes !== 'function') {
+      return { ok: false, reason: '引擎未就绪' };
+    }
+
+    const char = (typeof CHARACTERS !== 'undefined' ? CHARACTERS : [])
+      .find(c => c.id === (p.charId || 'shen')) || CHARACTERS[0];
+    const diff = this.getDifficulty('normal');
+
+    const qipai = (p.qipaiIds || []).map(id => {
+      const full = (typeof QIPAI_POOL !== 'undefined' ? QIPAI_POOL : []).find(x => x.id === id);
+      return full ? { ...full } : null;
+    }).filter(Boolean);
+
+    const jinnang = (p.jinnangIds || []).map(id => {
+      const full = (typeof JINNANG_POOL !== 'undefined' ? JINNANG_POOL : []).find(x => x.id === id);
+      return full ? { ...full, uid: uid() } : null;
+    }).filter(Boolean);
+
+    this.run = {
+      character: char,
+      difficulty: diff,
+      mode: 'puzzle',
+      isDaily: false,
+      isEndless: false,
+      isWeekly: false,
+      isPuzzle: true,
+      puzzleId: p.id,
+      puzzle: p,
+      weekly: null,
+      endlessFloor: 0,
+      realmIndex: 0,
+      stageIndex: 0,
+      qipai,
+      xinfa: {
+        single: 0, pair: 0, triple: 0, straight: 0, consecutive_pairs: 0,
+        airplane: 0, bomb: 0, rocket: 0,
+        ...(p.xinfa || {}),
+      },
+      jinnang,
+      dunwu: 0,
+      runFlags: {},
+      yueli: 0,
+      zongshiTokens: p.zongshiTokens || 0,
+      totalScore: 0,
+      stagesCleared: 0,
+      realmsCleared: 0,
+      handLimitBonus: 0,
+      duanweiLi: 0,
+      stats: { bombs: 0, flushes: 0, passes: 0, maxHand: 0, maxChain: 0, types: new Set() },
+      dailySeed: null,
+      dailyRngState: null,
+      importedBuild: false,
+    };
+
+    this.battle = this.buildPuzzleBattle(p);
+    this.invalidateLegalPlayCache();
+    this.saveRun('battle');
+    return { ok: true, puzzle: p };
+  }
+
+  /** 由残局定义装配 battle 状态 */
+  buildPuzzleBattle(p) {
+    const playerHand = sortCards(createCardsFromCodes(p.playerHand || []));
+    const enemyHand = sortCards(createCardsFromCodes(p.enemyHand || []));
+    const deck = createCardsFromCodes(p.deck || []);
+    const reserve = createCardsFromCodes(p.reserve || []);
+
+    let lastHand = null;
+    if (p.lastHand && p.lastHand.length) {
+      const lastCards = createCardsFromCodes(p.lastHand);
+      lastHand = analyzeHand(lastCards);
+      if (lastHand) lastHand.cards = lastCards;
+    }
+
+    const freePlay = p.freePlay != null
+      ? !!p.freePlay
+      : !(lastHand && p.lastPlayer === 'enemy');
+
+    const jiguanHand = (p.jiguanIds || []).map(id => {
+      const full = (typeof JIGUAN_POOL !== 'undefined' ? JIGUAN_POOL : []).find(x => x.id === id);
+      return full ? { ...full, uid: uid() } : null;
+    }).filter(Boolean);
+
+    const maxSoft = p.maxRounds || 12;
+    const threshold = p.threshold || 100;
+    const enemyThreshold = p.enemyThreshold != null ? p.enemyThreshold : 9999;
+
+    const battle = {
+      realmName: '残局论道',
+      stageName: p.name,
+      stageType: 'puzzle',
+      threshold,
+      baseThreshold: threshold,
+      playerScore: p.playerScore || 0,
+      enemyScore: p.enemyScore || 0,
+      enemyThreshold,
+      playerHand,
+      enemyHand,
+      deck,
+      reserve,
+      lastHand,
+      lastPlayer: p.lastPlayer || (lastHand ? 'enemy' : null),
+      turn: 'player',
+      freePlay,
+      passStreak: 0,
+      xinmo: p.xinmo || 0,
+      xinmoCap: 5,
+      openingHandCount: playerHand.length,
+      openingHandXinmo: 0,
+      round: 1,
+      maxSoftRound: maxSoft,
+      selectedIds: new Set(),
+      boss: null,
+      tianmingSuit: p.tianmingSuit || 'heart',
+      tianmingSuits: p.tianmingSuit ? [p.tianmingSuit] : ['heart'],
+      tianmingHidden: false,
+      tianmingDouble: 1,
+      flushStreak: 0,
+      playerChain: 0,
+      enemyChain: 0,
+      jiguanTokens: p.jiguanTokens || 0,
+      jiguanHand,
+      jiguanUsedThisTurn: false,
+      jiguanUsedCount: 0,
+      jiguanUsedTotal: 0,
+      discardedJiguan: [],
+      tempQi: 0,
+      tempLi: 0,
+      nextPlayQi: p.nextPlayQi || 0,
+      afterBombQi: 0,
+      juqiBonus: 0,
+      discardCount: 0,
+      discardLiBonus: 0,
+      pairToTripleBonus: 0,
+      bombQiStacks: 0,
+      yingCounterQi: 0,
+      counterLi: 0,
+      typesPlayed: new Set(),
+      fiveTypesReady: false,
+      fiveTypesFired: false,
+      firstHandType: null,
+      firstHandBoost: false,
+      gumingActive: false,
+      gumingPending: false,
+      passQiUsed: 0,
+      shield: p.shield || 0,
+      frozenEnemyIds: new Set(),
+      enemySkip: false,
+      extraJiguanTurn: false,
+      lastPlayerMaxOrder: lastHand ? lastHand.maxOrder : null,
+      lastScoreBreakdown: null,
+      lastPlayScore: 0,
+      log: [],
+      status: 'playing',
+      reviveUsed: false,
+      baibianActive: null,
+      yirongActive: null,
+      turnJiguanUsed: 0,
+      maxJiguanPerTurn: 1,
+      jiguanTurnLimit: 1,
+      metaFlushPct: 0,
+      metaChainQi: 0,
+      metaBeatLi: 0,
+      fengmoRounds: 0,
+      tianmingTriggerCount: 0,
+      pendingZongshi: null,
+      zongshiArmed: false,
+      guiyiTypes: new Set(),
+      guiyiReady: false,
+      modifiers: [],
+      modifierNames: [],
+      playsThisBattle: 0,
+      successfulBeats: 0,
+      initiativeStreak: 0,
+      bombCount: 0,
+      flushCount: 0,
+      passedThisBattle: false,
+      drawsThisBattle: 0,
+      autoDrawCounter: 0,
+      handLimit: 24,
+      qiCap: 16,
+      enemyBoost: 1,
+      scoreTax: 1,
+      passXinmoExtra: 0,
+      flushExtraPct: 0,
+      qiRain: 0,
+      modBombQi: 0,
+      weeklyBonus: null,
+      softcapRate: 0.4,
+      allXinfaBonus: 0,
+      shunshiBoost: null,
+      allTianmingHalf: false,
+      jieqiZongshi: null,
+      bloodPact: false,
+      endlessFloor: 0,
+      comboMomentumQi: 0,
+      threatQi: 0,
+      stageTip: p.tip || p.desc || '固定残局：破境即可通关',
+      puzzlePassiveEnemy: p.passiveEnemy !== false,
+      puzzleId: p.id,
+      puzzleStar: p.star || 1,
+    };
+
+    this.log(`【残局】${p.name} · 门槛 ${threshold}`);
+    if (p.tip) this.log(`提示：${p.tip}`);
+    if (lastHand) this.log(`台面：守关者【${lastHand.name}】`);
+    else this.log('自由出牌，冲击破境门槛');
+    const suit = (typeof SUITS !== 'undefined' ? SUITS : []).find(s => s.id === battle.tianmingSuit);
+    if (suit) this.log(`天命：${suit.symbol}`);
+    if (jiguanHand.length) this.log(`机关：${jiguanHand.map(j => j.name).join('、')}`);
+
+    this.refreshBattleDynamics?.();
+    return battle;
   }
 
   /** mode: normal | endless | daily | weekly */
@@ -2203,6 +2474,15 @@ class PaiZongGame {
     if (!b || b.status !== 'playing') return { done: true, status: b?.status };
     if (b.turn !== 'enemy') return { done: true, reason: 'not_enemy_turn' };
 
+    // 残局：守关者静默过牌，专注玩家解谜（仍会推进回合压力）
+    if (b.puzzlePassiveEnemy || this.run?.isPuzzle) {
+      this.log('守关者观棋不语');
+      this.afterEnemyPass();
+      if (b.status === 'lost') return { action: 'pass', lost: true, reason: b._loseReason || '回合耗尽' };
+      if (b.status === 'won') return { action: 'pass', won: true };
+      return { action: 'pass' };
+    }
+
     if (b.enemySkip) {
       b.enemySkip = false;
       this.log('守关者被封喉');
@@ -2825,8 +3105,16 @@ class PaiZongGame {
     if (!b || !this.run) return { ok: false };
     // 防止重复结算
     if (b.status === 'won' && b._settledWin) {
-      return { ok: true, won: true, reward: b._winReward || 0, yueliGain: b._winYueli || 0 };
+      return {
+        ok: true,
+        won: true,
+        reward: b._winReward || 0,
+        yueliGain: b._winYueli || 0,
+        stars: b._puzzleStars || 0,
+        isPuzzle: !!this.run.isPuzzle,
+      };
     }
+    if (this.run.isPuzzle) return this.onPuzzleWin();
     b.status = 'won';
     b._settledWin = true;
     const diff = this.run.difficulty;
@@ -2931,9 +3219,89 @@ class PaiZongGame {
     return { ok: true, won: true, reward, yueliGain };
   }
 
+  /** 残局胜利：评星 + 本地最佳 + 阅历（首通额外） */
+  onPuzzleWin() {
+    const b = this.battle;
+    const p = this.run.puzzle || (typeof getPuzzleById === 'function' ? getPuzzleById(this.run.puzzleId) : null);
+    if (!b || !p) return { ok: false };
+
+    b.status = 'won';
+    b._settledWin = true;
+
+    const rounds = b.round || 1;
+    const stars = this.ratePuzzleStars(p, rounds);
+    const prev = this.getPuzzleRecord(p.id);
+    const isFirst = !prev || !(prev.stars >= 1);
+    const bestStars = Math.max(stars, prev?.stars || 0);
+    const bestRounds = prev?.bestRounds != null
+      ? Math.min(prev.bestRounds, rounds)
+      : rounds;
+
+    let yueliGain = isFirst ? (p.yueliFirst || 20) : (p.yueliWin || 6);
+    // 三星额外小奖（仅首次达到该星级时）
+    if (stars >= 3 && (prev?.stars || 0) < 3) yueliGain += 10;
+    else if (stars > (prev?.stars || 0)) yueliGain += 4;
+
+    this.meta.puzzles = this.meta.puzzles || {};
+    this.meta.puzzles[p.id] = {
+      stars: bestStars,
+      bestRounds,
+      lastStars: stars,
+      lastRounds: rounds,
+      clears: (prev?.clears || 0) + 1,
+      firstClearAt: prev?.firstClearAt || Date.now(),
+      lastClearAt: Date.now(),
+    };
+    this.meta.totalYueli = (this.meta.totalYueli || 0) + yueliGain;
+    this.run.yueli += yueliGain;
+    this.run.totalScore = b.playerScore;
+
+    b._winReward = 0;
+    b._winYueli = yueliGain;
+    b._puzzleStars = stars;
+    b._puzzleBestStars = bestStars;
+    b._puzzleIsFirst = isFirst;
+
+    this.grantAchievement('puzzle1');
+    if (this.puzzleClearedCount() >= 5) this.grantAchievement('puzzle5');
+    if (typeof PUZZLE_POOL !== 'undefined' && this.puzzleClearedCount() >= PUZZLE_POOL.length) {
+      this.grantAchievement('puzzle_all');
+    }
+    if (this.puzzleThreeStarCount() >= 3) this.grantAchievement('puzzle_master');
+
+    this.log(`残局破境！${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} · ${rounds} 回合 · 阅历+${yueliGain}`);
+    this.save();
+    this.checkMetaAchievements();
+    this.saveRun('result', { resultWon: true, isPuzzle: true });
+    return {
+      ok: true,
+      won: true,
+      reward: 0,
+      yueliGain,
+      stars,
+      bestStars,
+      rounds,
+      isFirst,
+      isPuzzle: true,
+      puzzleName: p.name,
+    };
+  }
+
   onLose(reason) {
     const b = this.battle;
     if (!b || !this.run) return { ok: false, lost: true, reason };
+    if (this.run.isPuzzle) {
+      if (b.status === 'lost' && b._settledLose) {
+        return { ok: true, lost: true, reason: b._loseReason || reason, yueli: 0, isPuzzle: true };
+      }
+      b.status = 'lost';
+      b._settledLose = true;
+      b._loseReason = reason || '残局未破';
+      b._loseYueli = 0;
+      this.log(`残局未破：${b._loseReason}`);
+      this.saveRun('result', { resultWon: false, isPuzzle: true });
+      return { ok: true, lost: true, reason: b._loseReason, yueli: 0, isPuzzle: true };
+    }
     if (b.stageType === 'zong' && this.hasQipai('zongzhu_sheling') && !b.reviveUsed) {
       b.reviveUsed = true;
       b.threshold = Math.floor(b.threshold * 1.2);

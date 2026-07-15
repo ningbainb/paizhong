@@ -459,7 +459,9 @@ const UI = {
       const sum = game.runSaveSummary();
       if (sum) {
         contBtn.style.display = 'inline-flex';
-        contBtn.textContent = `继续论道 · ${sum.charName} · ${sum.stage} · ${sum.phaseLabel}`;
+        contBtn.textContent = sum.stage && String(sum.stage).startsWith('残局')
+          ? `继续残局 · ${sum.stage} · ${sum.phaseLabel}`
+          : `继续论道 · ${sum.charName} · ${sum.stage} · ${sum.phaseLabel}`;
       } else {
         contBtn.style.display = 'none';
       }
@@ -511,6 +513,73 @@ const UI = {
     this._stageQipaiKey = null;
     this.shopQipaiChoices = [];
     this.renderMap();
+  },
+
+  // ===== 残局论道 =====
+  renderPuzzleSelect() {
+    const grid = this.$('puzzle-grid');
+    const summary = this.$('puzzle-summary');
+    const desc = this.$('puzzle-desc');
+    const pool = typeof PUZZLE_POOL !== 'undefined' ? PUZZLE_POOL : [];
+    const cleared = game.puzzleClearedCount();
+    const three = game.puzzleThreeStarCount();
+    if (desc) desc.textContent = `已破 ${cleared}/${pool.length} · 三星 ${three} · 固定牌局短局解谜`;
+    if (summary) {
+      summary.innerHTML = `
+        <div class="puzzle-sum-card"><span>已破</span><strong>${cleared}/${pool.length}</strong></div>
+        <div class="puzzle-sum-card"><span>三星</span><strong>${three}</strong></div>
+        <div class="puzzle-sum-card"><span>规则</span><strong>破境即胜</strong></div>
+      `;
+    }
+    if (!grid) return;
+    grid.innerHTML = '';
+    pool.forEach((p, idx) => {
+      const rec = game.getPuzzleRecord(p.id);
+      const stars = rec?.stars || 0;
+      const starStr = '★'.repeat(stars) + '☆'.repeat(Math.max(0, 3 - stars));
+      const diffStars = '◆'.repeat(p.star || 1) + '◇'.repeat(Math.max(0, 3 - (p.star || 1)));
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'puzzle-card' + (stars > 0 ? ' is-cleared' : '') + (stars >= 3 ? ' is-perfect' : '');
+      card.innerHTML = `
+        <div class="puzzle-card-top">
+          <span class="puzzle-idx">${String(idx + 1).padStart(2, '0')}</span>
+          <span class="puzzle-diff" title="难度">${diffStars}</span>
+        </div>
+        <h4>${p.name}</h4>
+        <p>${p.desc}</p>
+        <div class="puzzle-card-foot">
+          <span class="puzzle-stars" title="最佳评价">${starStr}</span>
+          <span class="puzzle-meta">${stars
+            ? `最佳 ${rec.bestRounds || '—'} 回 · 通关 ${rec.clears || 1} 次`
+            : `首通阅历 +${p.yueliFirst || 20}`}</span>
+        </div>
+      `;
+      card.onclick = () => this.startPuzzle(p.id);
+      grid.appendChild(card);
+    });
+    this.showScreen('puzzle');
+  },
+
+  startPuzzle(puzzleId) {
+    // 残局会覆盖当前断点：有正传/无尽进行中时先确认
+    if (game.run && !game.run.isPuzzle) {
+      const ok = confirm('开始残局将覆盖当前论道断点（可先从标题继续论道）。是否继续？');
+      if (!ok) return;
+    }
+    if (typeof game.abandonRun === 'function') game.abandonRun();
+    const res = game.startPuzzle(puzzleId);
+    if (!res?.ok) {
+      this.toast(res?.reason || '无法开始残局');
+      return;
+    }
+    this.sfx('click');
+    this._battleGen = (this._battleGen || 0) + 1;
+    this.aiThinking = false;
+    this.animating = false;
+    this.showScreen('battle');
+    this.renderBattle();
+    this.toast(`残局·${res.puzzle.name}`, 1400);
   },
 
   // ===== 模式难度 =====
@@ -2657,15 +2726,30 @@ const UI = {
     const titleEl = this.$('result-title');
     const scoreEl = this.$('result-score');
     const labelEl = this.$('result-label');
+    const isPuzzle = !!(res.isPuzzle || game.run?.isPuzzle);
+
     if (titleEl) {
-      titleEl.textContent = won ? '破境成功' : '论道失败';
+      if (isPuzzle) {
+        titleEl.textContent = won
+          ? `残局破境 ${'★'.repeat(res.stars || b._puzzleStars || 1)}`
+          : '残局未破';
+      } else {
+        titleEl.textContent = won ? '破境成功' : '论道失败';
+      }
       titleEl.style.color = won ? 'var(--gold)' : 'var(--danger)';
     }
     if (scoreEl) scoreEl.textContent = b.playerScore;
     if (labelEl) {
-      labelEl.textContent = won
-        ? `门槛 ${b.threshold} · 顿悟+${res.reward || 0} · 阅历+${res.yueliGain || res.yueli || 0}`
-        : `${res.reason || '失败'} · 阅历+${res.yueli || 0}`;
+      if (isPuzzle && won) {
+        const stars = res.stars || b._puzzleStars || 1;
+        labelEl.textContent = `${res.puzzleName || game.run?.puzzle?.name || '残局'} · ${res.rounds || b.round || 1} 回合 · ${'★'.repeat(stars)} · 阅历+${res.yueliGain || 0}${res.isFirst ? '（首通）' : ''}`;
+      } else if (isPuzzle) {
+        labelEl.textContent = `${res.reason || '残局未破'} · 可再试或换题`;
+      } else {
+        labelEl.textContent = won
+          ? `门槛 ${b.threshold} · 顿悟+${res.reward || 0} · 阅历+${res.yueliGain || res.yueli || 0}`
+          : `${res.reason || '失败'} · 阅历+${res.yueli || 0}`;
+      }
     }
 
     // 胜/负全屏大插画（由 shell.css + class 控制）
@@ -2677,7 +2761,16 @@ const UI = {
 
     const bd = this.$('result-breakdown');
     if (bd) {
-      if (b.lastScoreBreakdown) {
+      if (isPuzzle) {
+        const stars = res.stars || b._puzzleStars || 0;
+        const best = res.bestStars || b._puzzleBestStars || stars;
+        bd.innerHTML = [
+          b.lastScoreBreakdown ? b.lastScoreBreakdown.map(x => `<div>${x.label}：${x.value}</div>`).join('') : '',
+          `<div>本局评价：${'★'.repeat(stars)}${'☆'.repeat(Math.max(0, 3 - stars))}</div>`,
+          `<div>历史最佳：${'★'.repeat(best)}${'☆'.repeat(Math.max(0, 3 - best))}</div>`,
+          `<div>用时回合：${res.rounds || b.round || 1}</div>`,
+        ].filter(Boolean).join('');
+      } else if (b.lastScoreBreakdown) {
         bd.innerHTML = b.lastScoreBreakdown.map(x => `<div>${x.label}：${x.value}</div>`).join('');
       } else {
         bd.innerHTML = (game.run.qipai || []).map(q => `<div>奇牌【${q.name}】${q.desc}</div>`).join('') || '无';
@@ -2686,37 +2779,75 @@ const UI = {
 
     const rq = this.$('result-qipai');
     if (rq) {
-      rq.textContent = (game.run.qipai || []).length
-        ? '本局构筑：' + game.run.qipai.map(q => q.name).join('、')
-        : '';
+      if (isPuzzle) {
+        rq.textContent = game.run?.puzzle?.tip
+          ? `提示：${game.run.puzzle.tip}`
+          : (game.run?.puzzle?.desc || '');
+      } else {
+        rq.textContent = (game.run.qipai || []).length
+          ? '本局构筑：' + game.run.qipai.map(q => q.name).join('、')
+          : '';
+      }
     }
 
-    const code = game.exportShareCode();
+    const code = isPuzzle ? '' : game.exportShareCode();
     const shareEl = this.$('result-share');
-    if (shareEl) shareEl.textContent = code || '（暂无）';
+    if (shareEl) shareEl.textContent = code || (isPuzzle ? '（残局模式无构筑码）' : '（暂无）');
     this._lastShare = code;
 
     const btnNext = this.$('btn-result-next');
     const btnShop = this.$('btn-result-shop');
     const btnRetry = this.$('btn-result-retry');
-    // 胜利：只留「进入藏经阁」；失败：再来一局
-    if (btnNext) {
-      btnNext.style.display = won ? 'inline-flex' : 'none';
-      btnNext.textContent = '进入藏经阁';
+    // 残局：返回列表 / 再试；正传胜利：藏经阁；失败：再来一局
+    if (isPuzzle) {
+      if (btnNext) {
+        btnNext.style.display = 'inline-flex';
+        btnNext.textContent = '返回残局列表';
+      }
+      if (btnShop) btnShop.style.display = 'none';
+      if (btnRetry) {
+        btnRetry.style.display = 'inline-flex';
+        btnRetry.textContent = '再试一次';
+      }
+    } else {
+      if (btnNext) {
+        btnNext.style.display = won ? 'inline-flex' : 'none';
+        btnNext.textContent = '进入藏经阁';
+      }
+      if (btnShop) btnShop.style.display = 'none';
+      if (btnRetry) {
+        btnRetry.style.display = won ? 'none' : 'inline-flex';
+        btnRetry.textContent = '再来一局';
+      }
     }
-    if (btnShop) btnShop.style.display = 'none';
-    if (btnRetry) btnRetry.style.display = won ? 'none' : 'inline-flex';
 
     this.showScreen('result');
     this.persistRun('result');
   },
 
   resultNext() {
+    if (game.run?.isPuzzle) {
+      if (typeof game.abandonRun === 'function') game.abandonRun();
+      else {
+        game.run = null;
+        game.battle = null;
+        if (game.clearRunSave) game.clearRunSave();
+      }
+      this.renderPuzzleSelect();
+      return;
+    }
     // 进藏经阁
     this.renderShop(true);
   },
 
   resultRetry() {
+    // 残局：同一题重开
+    if (game.run?.isPuzzle && game.run.puzzleId) {
+      const id = game.run.puzzleId;
+      if (typeof game.abandonRun === 'function') game.abandonRun();
+      this.startPuzzle(id);
+      return;
+    }
     // 同配置再开一局（先清旧断点）
     const setup = (game.run && game.run.character)
       ? {
@@ -3715,6 +3846,8 @@ function bindUI() {
     UI.renderModeSelect('daily');
   });
   on('btn-weekly', () => { UI.sfx('click'); UI.renderWeekly(); });
+  on('btn-puzzle', () => { UI.sfx('click'); UI.renderPuzzleSelect(); });
+  on('btn-puzzle-back', () => UI.renderTitle());
   on('btn-retry-last', () => {
     if (!warnOverwriteRun()) return;
     UI.retryLastSetup();
