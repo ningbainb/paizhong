@@ -283,95 +283,172 @@ const ASSETS = {
   },
 };
 
-// 已请求资源去重：页面切换时只为当前页面补齐所需素材，避免首屏并发抢占全部图片。
+// 已请求资源去重 + 并发上限：避免首屏同时拉几十张图把带宽打满。
 const PRELOADED_ASSET_URLS = new Set();
 const PENDING_ASSET_URLS = new Set();
 const ASSET_PRELOAD_ATTEMPTS = new Map();
 const MAX_ASSET_PRELOAD_RETRIES = 2;
+const MAX_ASSET_PRELOAD_CONCURRENCY = 4;
+/** @type {{ src: string, priority: string }[]} */
+const ASSET_PRELOAD_QUEUE = [];
+let ASSET_PRELOAD_ACTIVE = 0;
+
+function isMobileViewport() {
+  try {
+    return window.matchMedia('(max-width: 780px), (hover: none) and (pointer: coarse)').matches;
+  } catch (_) {
+    return typeof window !== 'undefined' && window.innerWidth <= 780;
+  }
+}
+
+function enqueueAssetPreload(src, priority = 'low') {
+  if (!src || PRELOADED_ASSET_URLS.has(src) || PENDING_ASSET_URLS.has(src)) return;
+  // 高优先级插队到前部
+  if (priority === 'high') {
+    ASSET_PRELOAD_QUEUE.unshift({ src, priority });
+  } else {
+    ASSET_PRELOAD_QUEUE.push({ src, priority });
+  }
+  pumpAssetPreloadQueue();
+}
+
+function pumpAssetPreloadQueue() {
+  while (ASSET_PRELOAD_ACTIVE < MAX_ASSET_PRELOAD_CONCURRENCY && ASSET_PRELOAD_QUEUE.length) {
+    const job = ASSET_PRELOAD_QUEUE.shift();
+    if (!job || PRELOADED_ASSET_URLS.has(job.src) || PENDING_ASSET_URLS.has(job.src)) continue;
+    PENDING_ASSET_URLS.add(job.src);
+    ASSET_PRELOAD_ACTIVE += 1;
+
+    const img = new Image();
+    img.decoding = 'async';
+    if ('fetchPriority' in img) img.fetchPriority = job.priority === 'high' ? 'high' : 'low';
+
+    const done = () => {
+      PENDING_ASSET_URLS.delete(job.src);
+      ASSET_PRELOAD_ACTIVE = Math.max(0, ASSET_PRELOAD_ACTIVE - 1);
+      pumpAssetPreloadQueue();
+    };
+
+    img.onload = () => {
+      PRELOADED_ASSET_URLS.add(job.src);
+      ASSET_PRELOAD_ATTEMPTS.delete(job.src);
+      done();
+    };
+    img.onerror = () => {
+      const attempts = (ASSET_PRELOAD_ATTEMPTS.get(job.src) || 0) + 1;
+      ASSET_PRELOAD_ATTEMPTS.set(job.src, attempts);
+      done();
+      if (attempts <= MAX_ASSET_PRELOAD_RETRIES) {
+        setTimeout(() => enqueueAssetPreload(job.src, job.priority), 400 * attempts);
+      }
+    };
+    img.src = job.src;
+  }
+}
 
 function preloadAssetUrls(urls, options = {}) {
   const priority = options.priority || 'low';
-  [...new Set(urls.filter(Boolean))].forEach(src => {
-    if (PRELOADED_ASSET_URLS.has(src) || PENDING_ASSET_URLS.has(src)) return;
-    PENDING_ASSET_URLS.add(src);
-    const img = new Image();
-    img.decoding = 'async';
-    if ('fetchPriority' in img) img.fetchPriority = priority;
-    img.onload = () => {
-      PENDING_ASSET_URLS.delete(src);
-      PRELOADED_ASSET_URLS.add(src);
-      ASSET_PRELOAD_ATTEMPTS.delete(src);
-    };
-    img.onerror = () => {
-      PENDING_ASSET_URLS.delete(src);
-      const attempts = (ASSET_PRELOAD_ATTEMPTS.get(src) || 0) + 1;
-      ASSET_PRELOAD_ATTEMPTS.set(src, attempts);
-      if (attempts <= MAX_ASSET_PRELOAD_RETRIES) {
-        setTimeout(() => preloadAssetUrls([src], options), 500 * attempts);
-      }
-    };
-    img.src = src;
-  });
+  [...new Set((urls || []).filter(Boolean))].forEach(src => enqueueAssetPreload(src, priority));
 }
 
 function deferAssetPreload(urls, options = {}) {
   const run = () => preloadAssetUrls(urls, options);
   if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(run, { timeout: 1400 });
+    window.requestIdleCallback(run, { timeout: options.timeout || 1600 });
   } else {
-    setTimeout(run, 240);
+    setTimeout(run, options.delay != null ? options.delay : 280);
   }
 }
 
-/** 首屏只预取壳层与标题页资源；页面本身仍会正常加载其 CSS 背景。 */
-function preloadAssets() {
-  preloadAssetUrls([ASSETS.shell.titleHall, ASSETS.ui.seal], { priority: 'high' });
-  deferAssetPreload([
-    ASSETS.shell.appBg,
-    ASSETS.shell.header,
-    ASSETS.shell.outerFrame,
-    ASSETS.shell.contentFrame,
-    ...Object.values(ASSETS.sects),
-  ]);
+function battleAssetUrls() {
+  const pick = (obj, keys) => keys.map(key => obj && obj[key]).filter(Boolean);
+  return [
+    ASSETS.shell.battleBg,
+    ASSETS.shell.sidebar,
+    ASSETS.shell.handTray,
+    ASSETS.shell.tableFrame,
+    ASSETS.ui.tableFelt,
+    ASSETS.ui.cardBack,
+    ASSETS.ui.enemy,
+    ASSETS.ui.boss,
+    ...pick(ASSETS.icons, ['draw', 'pass', 'play', 'hint', 'jinnang', 'shield']),
+    ...Object.values(ASSETS.cards || {}),
+    ...Object.values(ASSETS.hands || {}),
+  ];
 }
 
-/** 在进入对应页面后补齐该页面的图标和插画，不抢占首屏带宽。 */
+/** 首屏只预取 LCP 与必要壳层；装饰框/非关键背景延后。 */
+function preloadAssets() {
+  preloadAssetUrls([ASSETS.shell.titleHall, ASSETS.ui.seal], { priority: 'high' });
+  const shellUrls = [
+    ASSETS.shell.appBg,
+    ASSETS.shell.header,
+    ...Object.values(ASSETS.sects),
+  ];
+  // 手机隐藏外框，不抢带宽
+  if (!isMobileViewport()) {
+    shellUrls.push(ASSETS.shell.outerFrame, ASSETS.shell.contentFrame);
+  }
+  deferAssetPreload(shellUrls, { timeout: 2000, delay: 400 });
+  // 空闲时轻预取「开始论道」下一页
+  deferAssetPreload([ASSETS.ui.modeBg, ASSETS.diff.normal, ASSETS.diff.hard], {
+    timeout: 3200,
+    delay: 900,
+  });
+}
+
+/** 在进入对应页面后补齐该页面的图标和插画，并预测下一屏。 */
 function preloadAssetsForScreen(screen) {
   const values = (obj) => Object.values(obj || {});
-  const pick = (obj, keys) => keys.map(key => obj && obj[key]).filter(Boolean);
   let urls = [];
+  let nextHint = [];
   switch (screen) {
+    case 'title':
+      urls = [ASSETS.shell.titleHall, ASSETS.ui.seal];
+      nextHint = [ASSETS.ui.modeBg, ASSETS.diff.normal];
+      break;
     case 'mode':
       urls = [ASSETS.ui.modeBg, ...values(ASSETS.diff)];
+      nextHint = [ASSETS.ui.charBg, ...values(ASSETS.chars)];
       break;
     case 'char':
-      urls = [ASSETS.ui.charBg];
+      urls = [ASSETS.ui.charBg, ...values(ASSETS.chars)];
+      nextHint = [ASSETS.ui.mapBg, ASSETS.ui.frameCommon, ASSETS.ui.frameRare];
       break;
     case 'map':
       urls = [ASSETS.ui.mapBg];
+      // 路图之后大概率开战：提前拉战斗关键图
+      nextHint = battleAssetUrls();
       break;
     case 'qipai':
     case 'codex':
-      urls = [ASSETS.ui.codexBg, ASSETS.ui.frameCommon, ASSETS.ui.frameRare, ASSETS.ui.frameLegend,
-        ASSETS.ui.frameCursed];
+      urls = [
+        ASSETS.ui.codexBg,
+        ASSETS.ui.frameCommon,
+        ASSETS.ui.frameRare,
+        ASSETS.ui.frameLegend,
+        ASSETS.ui.frameCursed,
+        ...values(ASSETS.qipai),
+      ];
+      if (screen === 'qipai') nextHint = battleAssetUrls().slice(0, 8);
       break;
     case 'battle':
-      urls = [ASSETS.shell.battleBg, ASSETS.shell.sidebar, ASSETS.shell.handTray, ASSETS.shell.tableFrame,
-        ASSETS.ui.tableFelt, ASSETS.ui.cardBack, ASSETS.ui.enemy, ASSETS.ui.boss,
-        ...pick(ASSETS.icons, ['draw', 'pass', 'play', 'hint', 'jinnang']),
-        ...values(ASSETS.cards)];
+      urls = battleAssetUrls();
+      nextHint = [ASSETS.ui.resultBg, ASSETS.ui.shopBg, ...values(ASSETS.fx)];
       break;
     case 'shop':
-      urls = [ASSETS.ui.shopBg];
+      urls = [ASSETS.ui.shopBg, ...values(ASSETS.xinfa), ...values(ASSETS.qipai)];
+      nextHint = [ASSETS.ui.mapBg];
       break;
     case 'result':
       urls = [ASSETS.ui.resultBg, ...values(ASSETS.fx)];
+      nextHint = [ASSETS.ui.shopBg, ASSETS.ui.mapBg];
       break;
     case 'help':
-      urls = [ASSETS.ui.helpBg];
+      urls = [ASSETS.ui.helpBg, ...values(ASSETS.hands)];
       break;
     case 'achieve':
-      urls = [];
+      urls = values(ASSETS.achieve);
       break;
     case 'meta':
       urls = [ASSETS.ui.metaBg];
@@ -381,9 +458,14 @@ function preloadAssetsForScreen(screen) {
       break;
     case 'weekly':
       urls = [ASSETS.ui.weeklyBanner];
+      nextHint = [ASSETS.ui.modeBg, ASSETS.ui.charBg];
       break;
     default:
       return;
   }
-  deferAssetPreload(urls);
+  // 当前页立即排队（idle）；下一屏再延后一点
+  deferAssetPreload(urls, { timeout: 1200, delay: 120 });
+  if (nextHint.length) {
+    deferAssetPreload(nextHint, { timeout: 2800, delay: 700 });
+  }
 }

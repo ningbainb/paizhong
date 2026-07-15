@@ -14,7 +14,8 @@
   <meta property="og:image" content="assets/ui/seal.jpg" />
   <link rel="icon" type="image/jpeg" href="assets/ui/seal.jpg" />
   <link rel="apple-touch-icon" href="assets/ui/seal.jpg" />
-  <!-- 首屏图章与五宗徽记优先请求，防止背景图在网络波动时留下空框。 -->
+  <!-- 首屏 LCP：大厅背景 + 图章优先；其余由图层 CSS / assets.js 按需加载。 -->
+  <link rel="preload" as="image" href="assets/shell/title_hall.jpg" fetchpriority="high" />
   <link rel="preload" as="image" href="assets/ui/seal.jpg" fetchpriority="high" />
   <title>牌宗 · 五宗归一</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
