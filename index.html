@@ -25,7 +25,7 @@
   <link rel="stylesheet" href="css/shell.css" />
   <link rel="stylesheet" href="css/feel.css" />
   <link rel="stylesheet" href="css/polish.css" />
-  <link rel="stylesheet" href="css/mobile.css?v=hand-safe-2" />
+  <link rel="stylesheet" href="css/mobile.css?v=touch-ux-1" />
 </head>
 <body>
   <div class="bg-layer" aria-hidden="true">
@@ -514,6 +514,15 @@
           </div><!-- /.table-frame-wrap -->
 
           <div class="hand-area" id="hand-area">
+            <!-- 移动端：资源条 + 宗势/清空/微调（桌面隐藏，见 mobile.css） -->
+            <div class="mobile-battle-bar" id="mobile-battle-bar" aria-label="移动端快捷操作">
+              <div class="mobile-res" id="mobile-res"></div>
+              <div class="mobile-quick">
+                <button class="btn btn-ghost btn-small" id="btn-zongshi-m" type="button" title="蓄势宗势令">宗势</button>
+                <button class="btn btn-ghost btn-small" id="btn-clear-sel" type="button" title="清空当前选牌">清空</button>
+                <button class="btn btn-ghost btn-small" id="btn-multi-toggle" type="button" aria-pressed="false" title="开启后点牌可加减单张（等同 Shift）">微调</button>
+              </div>
+            </div>
             <div class="hand-toolbar">
               <span id="hand-count-label">手牌 17 张</span>
               <span class="hand-hint" id="hand-hint"></span>

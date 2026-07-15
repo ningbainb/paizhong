@@ -15,9 +15,37 @@ const UI = {
   animating: false,
   _lastClickCard: null,
   _lastClickTime: 0,
+  /** 移动端「微调」模式：点牌等价于桌面 Shift 加减单张 */
+  multiSelectMode: false,
+  _coarsePointer: null,
 
   $(id) {
     return document.getElementById(id);
+  },
+
+  /** 触控 / 窄屏：用移动端文案与手势 */
+  isTouchUI() {
+    if (this._coarsePointer == null) {
+      try {
+        this._coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches
+          || ('ontouchstart' in window && window.matchMedia('(max-width: 900px)').matches);
+      } catch (_) {
+        this._coarsePointer = 'ontouchstart' in window;
+      }
+      // 视口变化时重算
+      try {
+        const mq = window.matchMedia('(hover: none) and (pointer: coarse), (max-width: 780px)');
+        const reset = () => { this._coarsePointer = null; };
+        if (mq.addEventListener) mq.addEventListener('change', reset);
+        else if (mq.addListener) mq.addListener(reset);
+      } catch (_) { /* ignore */ }
+    }
+    if (this._coarsePointer) return true;
+    try {
+      return window.innerWidth <= 780;
+    } catch (_) {
+      return false;
+    }
   },
 
   showScreen(name) {
@@ -1460,6 +1488,7 @@ const UI = {
         : '消耗 1 令，使下一手得分提高';
       zBtn.classList.toggle('need-action', zongArmed);
     }
+    this.syncMobileBattleBar();
 
     // 敌人肖像：宗主局换 Boss 立绘
     const enemyPortraitEl = this.$('enemy-portrait');
@@ -1684,59 +1713,191 @@ const UI = {
     el.dataset.cardId = card.id;
 
     if (!opts.table && !card._frozen) {
-      el.onmousedown = (e) => { e.preventDefault(); }; // 避免拖拽选中文字干扰点击
-      el.onclick = (e) => {
-        const battle = game.battle;
-        if (!battle || battle.turn !== 'player' || this.aiThinking || this.animating) return;
-        e.stopPropagation();
-
-        const multi = e.shiftKey || e.ctrlKey || e.metaKey;
-        const now = Date.now();
-        // 双击：在已选合法组上直接出牌
-        if (!multi && this._lastClickCard === card.id && now - this._lastClickTime < 320) {
-          if (!battle.selectedIds.has(card.id)) {
-            game.toggleSelect(card.id, { multi: false });
-          }
-          this.renderHand();
-          this.updateHandHint();
-          this.syncPlayButtons();
-          if (game.canPlaySelected()) {
-            this._lastClickCard = null;
-            this.onPlay();
-            return;
-          }
-          // 非法则当作一次普通重选，不落空
-        }
-        this._lastClickCard = card.id;
-        this._lastClickTime = now;
-
-        // 点选瞬间反馈
-        el.classList.add('tap');
-        setTimeout(() => el.classList.remove('tap'), 180);
-
-        game.toggleSelect(card.id, { multi });
-        this._hintCardIds = null; // 手动改选后清推荐高亮
-        this.renderHand();
-        // 给新选中的牌补一次 tap
-        const picked = [...(game.battle?.selectedIds || [])];
-        if (picked.length) {
-          requestAnimationFrame(() => {
-            picked.forEach(id => {
-              const node = document.querySelector(`.hand-cards .card[data-card-id="${id}"]`);
-              if (node) {
-                node.classList.add('tap');
-                setTimeout(() => node.classList.remove('tap'), 160);
-              }
-            });
-          });
-          this.guideNotifySelect();
-        }
-        this.updateHandHint();
-        this.syncPlayButtons();
-        if (typeof SFX !== 'undefined') SFX.play('select');
-      };
+      this.bindCardInteraction(el, card);
     }
     return el;
+  },
+
+  /**
+   * 手牌触控：区分横向滑动与点选；长按 = 微调加减单张。
+   * 避免滑动手牌时误选，并补上移动端无 Shift 的缺口。
+   */
+  bindCardInteraction(el, card) {
+    el.onmousedown = (e) => { e.preventDefault(); };
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    let ptr = null;
+    const clearLong = () => {
+      if (ptr?.longTimer) {
+        clearTimeout(ptr.longTimer);
+        ptr.longTimer = null;
+      }
+    };
+
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button != null && e.button !== 0) return;
+      const battle = game.battle;
+      if (!battle || battle.turn !== 'player' || this.aiThinking || this.animating) return;
+      ptr = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        moved: false,
+        longFired: false,
+        longTimer: null,
+      };
+      // 触控长按进入单张加减（等同 Shift）
+      if (e.pointerType === 'touch' || this.isTouchUI()) {
+        ptr.longTimer = setTimeout(() => {
+          if (!ptr || ptr.moved) return;
+          ptr.longFired = true;
+          try {
+            if (navigator.vibrate) navigator.vibrate(14);
+          } catch (_) { /* ignore */ }
+          el.classList.add('long-press');
+          setTimeout(() => el.classList.remove('long-press'), 220);
+          this.selectCard(card, { multi: true, fromLongPress: true });
+          this.toast('微调：已切换该牌', 900);
+        }, 420);
+      }
+    });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!ptr || e.pointerId !== ptr.id) return;
+      const dx = e.clientX - ptr.x;
+      const dy = e.clientY - ptr.y;
+      // 横向滑动手牌时取消点选；阈值略大以免微抖误判
+      if (Math.abs(dx) > 12 || Math.abs(dy) > 14) {
+        ptr.moved = true;
+        clearLong();
+      }
+    });
+
+    const endPtr = (e, cancelled) => {
+      if (!ptr || (e && e.pointerId !== ptr.id)) return;
+      const state = ptr;
+      clearLong();
+      ptr = null;
+      if (cancelled || state.moved || state.longFired) return;
+      const multi = !!(this.multiSelectMode || (e && (e.shiftKey || e.ctrlKey || e.metaKey)));
+      this.selectCard(card, { multi });
+    };
+
+    el.addEventListener('pointerup', (e) => endPtr(e, false));
+    el.addEventListener('pointercancel', (e) => endPtr(e, true));
+    // 吞掉 click，避免与 pointerup 双触发
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  },
+
+  /** 选牌核心：双击出牌、微调、反馈 */
+  selectCard(card, opts = {}) {
+    const battle = game.battle;
+    if (!battle || battle.turn !== 'player' || this.aiThinking || this.animating) return;
+
+    const multi = !!opts.multi;
+    const now = Date.now();
+    const dblMs = this.isTouchUI() ? 300 : 320;
+
+    // 双击/双触：在已选合法组上直接出牌
+    if (!multi && !opts.fromLongPress && this._lastClickCard === card.id && now - this._lastClickTime < dblMs) {
+      if (!battle.selectedIds.has(card.id)) {
+        game.toggleSelect(card.id, { multi: false });
+      }
+      this.renderHand();
+      this.updateHandHint();
+      this.syncPlayButtons();
+      this.syncMobileBattleBar();
+      if (game.canPlaySelected()) {
+        this._lastClickCard = null;
+        this.onPlay();
+        return;
+      }
+    }
+    this._lastClickCard = card.id;
+    this._lastClickTime = now;
+
+    game.toggleSelect(card.id, { multi });
+    this._hintCardIds = null;
+    this.renderHand();
+
+    const picked = [...(game.battle?.selectedIds || [])];
+    if (picked.length) {
+      requestAnimationFrame(() => {
+        picked.forEach(id => {
+          const node = document.querySelector(`.hand-cards .card[data-card-id="${id}"]`);
+          if (node) {
+            node.classList.add('tap');
+            setTimeout(() => node.classList.remove('tap'), 160);
+          }
+        });
+      });
+      this.guideNotifySelect();
+    }
+    this.updateHandHint();
+    this.syncPlayButtons();
+    this.syncMobileBattleBar();
+    if (typeof SFX !== 'undefined') SFX.play('select');
+  },
+
+  clearHandSelection() {
+    if (!game.battle) return;
+    game.battle.selectedIds.clear();
+    game.battle._selectCycleKey = null;
+    game.battle._selectCycleIdx = 0;
+    this._hintCardIds = null;
+    this.renderHand();
+    this.updateHandHint();
+    this.syncPlayButtons();
+    this.syncMobileBattleBar();
+  },
+
+  toggleMultiSelectMode() {
+    this.multiSelectMode = !this.multiSelectMode;
+    this.syncMobileBattleBar();
+    this.toast(this.multiSelectMode ? '微调已开：点牌加减单张' : '微调已关：点牌智能成组', 1200);
+    this.updateHandHint();
+  },
+
+  /** 同步移动端资源条与快捷按钮（宗势/清空/微调） */
+  syncMobileBattleBar() {
+    const b = game.battle;
+    const res = this.$('mobile-res');
+    const zBtn = this.$('btn-zongshi-m');
+    const multiBtn = this.$('btn-multi-toggle');
+    const clearBtn = this.$('btn-clear-sel');
+    if (!b) return;
+
+    const zongTokens = game.run?.zongshiTokens || 0;
+    const zongArmed = !!b.zongshiArmed;
+    const isPlayer = b.turn === 'player' && b.status === 'playing' && !this.aiThinking && !this.animating;
+    const xinmoCap = b.xinmoCap || 5;
+
+    if (res) {
+      res.innerHTML = `
+        <span class="mres${b.xinmo >= xinmoCap - 1 ? ' warn' : ''}" title="心魔">心魔 ${b.xinmo}/${xinmoCap}</span>
+        <span class="mres" title="机关令">令 ${b.jiguanTokens || 0}</span>
+        <span class="mres${zongArmed ? ' good' : ''}" title="宗势令">${zongArmed ? '宗势·蓄' : `宗势 ${zongTokens}`}</span>
+        <span class="mres${(b.maxSoftRound || 24) - b.round <= 5 ? ' warn' : ''}" title="回合">回 ${b.round}/${b.maxSoftRound || 24}</span>
+      `;
+    }
+    if (zBtn) {
+      const canZ = isPlayer && (zongTokens > 0 || zongArmed);
+      zBtn.disabled = !canZ;
+      zBtn.textContent = zongArmed ? '取消蓄势' : (zongTokens > 0 ? `宗势×${zongTokens}` : '宗势');
+      zBtn.classList.toggle('need-action', !!zongArmed);
+      zBtn.classList.toggle('is-armed', !!zongArmed);
+    }
+    if (multiBtn) {
+      multiBtn.classList.toggle('is-on', !!this.multiSelectMode);
+      multiBtn.setAttribute('aria-pressed', this.multiSelectMode ? 'true' : 'false');
+      multiBtn.textContent = this.multiSelectMode ? '微调·开' : '微调';
+    }
+    if (clearBtn) {
+      clearBtn.disabled = !isPlayer || !(b.selectedIds && b.selectedIds.size);
+    }
   },
 
   /** 仅根据当前选牌刷新出牌/过牌按钮状态（不重绘全桌） */
@@ -1786,6 +1947,7 @@ const UI = {
         && (b.drawsThisBattle || 0) < drawMax;
       drawBtn.disabled = !canDraw;
     }
+    this.syncMobileBattleBar();
   },
 
   renderHand() {
@@ -1796,10 +1958,13 @@ const UI = {
     container.innerHTML = '';
     const sorted = sortCards(b.playerHand);
     const n = sorted.length;
-    // 重叠：牌越多叠得越紧
-    const overlap = n <= 8 ? -12 : n <= 12 ? -16 : n <= 16 ? -20 : -24;
-    // 轻扇形：中间低、两侧略抬，旋转角克制
-    const maxRot = n <= 8 ? 7 : n <= 14 ? 9 : 11;
+    // 重叠：牌越多叠得越紧；触控端略放宽，减少点偏
+    const touch = this.isTouchUI();
+    const overlap = touch
+      ? (n <= 8 ? -10 : n <= 12 ? -13 : n <= 16 ? -16 : -18)
+      : (n <= 8 ? -12 : n <= 12 ? -16 : n <= 16 ? -20 : -24);
+    // 轻扇形：中间低、两侧略抬，旋转角克制；触控端几乎拉平便于点选
+    const maxRot = touch ? (n <= 10 ? 2 : 3) : (n <= 8 ? 7 : n <= 14 ? 9 : 11);
 
     // 推荐高亮 id 集合
     const hintIds = this._hintCardIds instanceof Set ? this._hintCardIds : null;
@@ -1813,7 +1978,7 @@ const UI = {
       // 扇形 CSS 变量
       const t = n <= 1 ? 0 : (i / (n - 1)) * 2 - 1; // -1..1
       const rot = t * maxRot;
-      const y = Math.abs(t) * (n > 12 ? 6 : 4);
+      const y = touch ? 0 : Math.abs(t) * (n > 12 ? 6 : 4);
       el.style.setProperty('--fan-ml', i === 0 ? '0px' : `${overlap}px`);
       el.style.setProperty('--fan-rot', `${rot.toFixed(2)}deg`);
       el.style.setProperty('--fan-y', `${y.toFixed(1)}px`);
@@ -1858,23 +2023,31 @@ const UI = {
       return;
     }
 
+    const touch = this.isTouchUI();
+    const fineTip = touch
+      ? (this.multiSelectMode ? '微调中·点牌加减' : '长按/点「微调」加减')
+      : 'Shift微调';
     if (!cards.length) {
       const base = free
-        ? '点牌成组 · 再点轮换 · Shift微调'
-        : `点牌自动压【${b.lastHand?.name || '上家'}】· 再点轮换`;
+        ? (touch ? `点牌成组 · 再点轮换 · ${fineTip}` : '点牌成组 · 再点轮换 · Shift微调')
+        : (touch
+          ? `点牌压【${b.lastHand?.name || '上家'}】· 再点轮换`
+          : `点牌自动压【${b.lastHand?.name || '上家'}】· 再点轮换`);
       hint.textContent = `${base} · 差${need}破境 · 可压${legal}手`;
       return;
     }
     const labels = cards.map(c => (c.joker ? c.label : c.suitSymbol + c.label)).join('');
     const hand = game.getSelectedHand();
     if (!hand) {
-      hint.textContent = `已选 ${labels} · 不是合法牌型（Shift 微调）`;
+      hint.textContent = `已选 ${labels} · 不是合法牌型（${fineTip}）`;
       hint.classList.add('cannot-play');
       hint.style.color = 'var(--danger)';
       return;
     }
     if (hand.cards.length !== cards.length) {
-      hint.textContent = `已选 ${labels} · 多选了杂牌，请重选或 Shift 去掉`;
+      hint.textContent = touch
+        ? `已选 ${labels} · 多选杂牌，点「清空」或开微调去掉`
+        : `已选 ${labels} · 多选了杂牌，请重选或 Shift 去掉`;
       hint.classList.add('cannot-play');
       hint.style.color = 'var(--danger)';
       return;
@@ -1941,12 +2114,13 @@ const UI = {
     const res = game.toggleZongshi();
     if (!res.ok) {
       this.toast(res.reason || '无法使用');
-      this.shake(this.$('btn-zongshi'));
+      this.shake(this.$('btn-zongshi-m') || this.$('btn-zongshi'));
       return;
     }
     this.sfx('shop');
     this.toast(res.armed ? '宗势已蓄势，下次出牌×1.3' : '已取消宗势蓄势');
     this.renderBattle();
+    this.syncMobileBattleBar();
   },
 
   renderJiguan() {
@@ -1957,7 +2131,7 @@ const UI = {
     if (!bar || !b) return;
 
     const isPlayer = b.turn === 'player' && b.status === 'playing' && !this.aiThinking && !this.animating;
-    const maxJ = b.extraJiguanTurn ? 2 : (b.maxJiguanPerTurn || 1);
+    const maxJ = b.jiguanTurnLimit || (b.extraJiguanTurn ? 2 : (b.maxJiguanPerTurn || 1));
     const used = b.turnJiguanUsed || 0;
     const usedUp = used >= maxJ;
     const tokens = b.jiguanTokens || 0;
@@ -2843,7 +3017,7 @@ const UI = {
     if (cancel) {
       cancel.textContent = '随机一项';
       cancel.onclick = () => {
-        const ch = ev.choices[Math.floor(Math.random() * ev.choices.length)];
+        const ch = ev.choices[Math.floor(game.random() * ev.choices.length)];
         const r = game.applyStageEventChoice(ev.id, ch.id);
         if (r.ok) this.sfx('shop');
         finish(r, ch);
@@ -3602,6 +3776,12 @@ function bindUI() {
   on('btn-skip-qipai', () => UI.skipQipai());
   on('btn-draw', () => UI.onDraw());
   on('btn-zongshi', () => UI.onZongshi());
+  on('btn-zongshi-m', () => UI.onZongshi());
+  on('btn-clear-sel', () => {
+    UI.clearHandSelection();
+    UI.sfx('select');
+  });
+  on('btn-multi-toggle', () => UI.toggleMultiSelectMode());
   on('btn-play', () => UI.onPlay());
   on('btn-pass', () => UI.onPass());
   on('btn-hint', () => UI.onHint());
@@ -3685,14 +3865,7 @@ function bindUI() {
         UI.onHint();
       }
     } else if (key === 'Escape') {
-      if (game.battle) {
-        game.battle.selectedIds.clear();
-        game.battle._selectCycleKey = null;
-        UI._hintCardIds = null;
-        UI.renderHand();
-        UI.updateHandHint();
-        UI.syncPlayButtons();
-      }
+      UI.clearHandSelection();
     }
   });
 }

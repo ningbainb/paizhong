@@ -819,7 +819,7 @@ function getWeeklyChallenge(date = new Date()) {
   return { key, challenge: WEEKLY_CHALLENGES[idx], index: idx };
 }
 
-function generateEndlessStage(floor, difficultyMult = 1) {
+function generateEndlessStage(floor, difficultyMult = 1, rng = Math.random) {
   // 无尽：从 10500 起每层约 ×1.12
   const base = 10500 * Math.pow(1.12, floor - 1) * difficultyMult;
   const threshold = Math.floor(base);
@@ -827,7 +827,7 @@ function generateEndlessStage(floor, difficultyMult = 1) {
   const pool = ENDLESS_MODIFIERS.slice();
   const count = 1 + (floor % 3 === 0 ? 1 : 0) + (floor >= 15 ? 1 : 0);
   for (let i = 0; i < count && pool.length; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
+    const idx = Math.floor((typeof rng === 'function' ? rng() : Math.random()) * pool.length);
     mods.push(pool.splice(idx, 1)[0]);
   }
   return {

@@ -5,6 +5,7 @@
 
 class PaiZongGame {
   constructor() {
+    this._legalPlayCache = { battle: null, key: '', plays: [] };
     this.resetMeta();
   }
 
@@ -232,6 +233,7 @@ class PaiZongGame {
         types: this._setToArr(r.stats?.types),
       },
       dailySeed: r.dailySeed ?? null,
+      dailyRngState: r.dailyRngState ?? null,
       importedBuild: !!r.importedBuild,
     };
     return o;
@@ -293,6 +295,7 @@ class PaiZongGame {
         types: this._arrToSet(data.stats?.types),
       },
       dailySeed: data.dailySeed ?? null,
+      dailyRngState: data.dailyRngState ?? null,
       importedBuild: !!data.importedBuild,
     };
   }
@@ -394,6 +397,7 @@ class PaiZongGame {
       if (!run) return { ok: false, reason: '论道数据损坏' };
       this.run = run;
       this.battle = data.battle ? this.deserializeBattle(data.battle) : null;
+      this.invalidateLegalPlayCache();
       return { ok: true, phase: data.phase || 'map', ui: data.ui || {}, savedAt: data.savedAt };
     } catch (e) {
       return { ok: false, reason: '恢复失败：' + (e.message || '未知') };
@@ -410,7 +414,18 @@ class PaiZongGame {
   abandonRun() {
     this.run = null;
     this.battle = null;
+    this.invalidateLegalPlayCache();
     this.clearRunSave();
+  }
+
+  /** 每日挑战专用的可持久化随机源；普通模式仍使用原生随机。 */
+  random() {
+    if (!this.run?.isDaily) return Math.random();
+    let state = Number(this.run.dailyRngState);
+    if (!Number.isFinite(state) || state <= 0) state = Number(this.run.dailySeed) || 1;
+    state = (state * 1664525 + 1013904223) >>> 0;
+    this.run.dailyRngState = state;
+    return state / 4294967296;
   }
 
   /** 断点摘要（标题按钮文案） */
@@ -683,6 +698,7 @@ class PaiZongGame {
     const char = CHARACTERS.find(c => c.id === characterId) || CHARACTERS[0];
     let diff = this.getDifficulty(options.difficulty || 'normal');
     const mode = options.mode || 'normal';
+    const dailySeed = mode === 'daily' ? this.getDailySeed() : null;
 
     const weeklyInfo = mode === 'weekly' ? getWeeklyChallenge() : null;
     if (weeklyInfo) {
@@ -714,7 +730,8 @@ class PaiZongGame {
       handLimitBonus: 0,
       duanweiLi: 0,
       stats: { bombs: 0, flushes: 0, passes: 0, maxHand: 0, maxChain: 0, types: new Set() },
-      dailySeed: mode === 'daily' ? this.getDailySeed() : null,
+      dailySeed,
+      dailyRngState: dailySeed ? dailySeed : null,
       importedBuild: false,
     };
 
@@ -744,7 +761,7 @@ class PaiZongGame {
     }
 
     for (let i = 0; i < (mb.startJinnang || 0); i++) {
-      const jn = JINNANG_POOL[Math.floor(Math.random() * JINNANG_POOL.length)];
+      const jn = JINNANG_POOL[Math.floor(this.random() * JINNANG_POOL.length)];
       this.run.jinnang.push({ ...jn, uid: uid() });
     }
 
@@ -770,6 +787,7 @@ class PaiZongGame {
     this.checkMetaAchievements();
     // 新开局覆盖旧断点
     this.battle = null;
+    this.invalidateLegalPlayCache();
     this.saveRun('map');
     return this.run;
   }
@@ -809,7 +827,15 @@ class PaiZongGame {
     if (!this.run) return null;
     if (this.run.isEndless || this.run.realmIndex >= REALM_THRESHOLDS.length) {
       const floor = this.run.endlessFloor || 1;
-      const stage = generateEndlessStage(floor, this.run.difficulty.mult);
+      let stageRng;
+      if (this.run.isDaily) {
+        let state = (((Number(this.run.dailySeed) || 1) ^ ((floor * 2654435761) >>> 0)) >>> 0) || 1;
+        stageRng = () => {
+          state = (state * 1664525 + 1013904223) >>> 0;
+          return state / 4294967296;
+        };
+      }
+      const stage = generateEndlessStage(floor, this.run.difficulty.mult, stageRng);
       return {
         realm: { realm: 9, name: '无尽论道' },
         stage,
@@ -872,7 +898,8 @@ class PaiZongGame {
     if (weekly?.thresholdMul) thresholdMul *= weekly.thresholdMul;
     threshold = Math.floor(threshold * thresholdMul);
 
-    const deck = createDeck();
+    const rng = this.random.bind(this);
+    const deck = createDeck(rng);
     const mb = this.getMetaBonuses();
     let playerCount = 17;
     if (mods.includes('hand_minus_1') || stage.type === 'an') playerCount = 16;
@@ -885,18 +912,18 @@ class PaiZongGame {
     const reserve = drawCards(deck, 3);
 
     const boss = stage.boss ? BOSS_RULES[stage.boss] : null;
-    let tianmingSuit = randomTianmingSuit();
+    let tianmingSuit = randomTianmingSuit(rng);
     let tianmingSuits = [tianmingSuit];
     let tianmingHidden = mods.includes('tianming_hidden') || stage.type === 'an';
 
     if (mods.includes('double_tianming')) {
-      let s2 = randomTianmingSuit();
-      while (s2 === tianmingSuit) s2 = randomTianmingSuit();
+      let s2 = randomTianmingSuit(rng);
+      while (s2 === tianmingSuit) s2 = randomTianmingSuit(rng);
       tianmingSuits = [tianmingSuit, s2];
     }
     if (this.hasQipai('shiming')) tianmingHidden = true;
     if (this.hasQipai('tianji_shu') || weekly?.forceRevealTianming) tianmingHidden = false;
-    if (tianmingHidden && mb.tianmingPeek && Math.random() < 0.4) tianmingHidden = false;
+    if (tianmingHidden && mb.tianmingPeek && rng() < 0.4) tianmingHidden = false;
 
     let jiguanTokens = 2 + (mb.startToken || 0);
     if (this.run.character.passive?.type === 'jiguan_master') {
@@ -917,7 +944,7 @@ class PaiZongGame {
     if (mods.includes('extra_jiguan')) jiguanCount += 2;
     let jiguanHand = [];
     if (this.meta.tutorialStep >= 2 || this.meta.gamesPlayed > 1) {
-      jiguanHand = shuffle(JIGUAN_POOL).slice(0, jiguanCount).map(j => ({ ...j, uid: uid() }));
+      jiguanHand = shuffle(JIGUAN_POOL, rng).slice(0, jiguanCount).map(j => ({ ...j, uid: uid() }));
     } else {
       // 首局：2 张免费教学机关（清心 + 借火），建立「技能按钮」心智
       const teachIds = ['qingxin_jg', 'jiehuo_jg'];
@@ -928,7 +955,7 @@ class PaiZongGame {
       // 若已购机匣，首局也补随机机关
       const extra = Math.max(0, (mb.jiguanPack || 0));
       if (extra > 0) {
-        const more = shuffle(JIGUAN_POOL).slice(0, extra).map(j => ({ ...j, uid: uid() }));
+        const more = shuffle(JIGUAN_POOL, rng).slice(0, extra).map(j => ({ ...j, uid: uid() }));
         jiguanHand = jiguanHand.concat(more);
       }
     }
@@ -960,7 +987,7 @@ class PaiZongGame {
     let shield = 0;
     if (this.hasQipai('shouhu')) shield += 1;
     if (mb.shieldGuaranteed) shield += 1;
-    else if (mb.shieldChance && Math.random() < mb.shieldChance) shield += 1;
+    else if (mb.shieldChance && rng() < mb.shieldChance) shield += 1;
     if (this.run.runFlags?.nextShield) {
       shield += this.run.runFlags.nextShield;
       this.run.runFlags.nextShield = 0;
@@ -1084,6 +1111,7 @@ class PaiZongGame {
       yirongActive: null,
       turnJiguanUsed: 0,
       maxJiguanPerTurn: 1 + (mb.jiguanTurn || 0),
+      jiguanTurnLimit: 1 + (mb.jiguanTurn || 0),
       metaFlushPct: mb.flushPct || 0,
       metaChainQi: mb.chainQi || 0,
       metaBeatLi: mb.beatLi || 0,
@@ -1124,6 +1152,7 @@ class PaiZongGame {
       threatQi: 0,
       stageTip: '',
     };
+    this.invalidateLegalPlayCache();
 
     // 关卡提示文案
     let stageTip = '推高破境进度，压制守关者。';
@@ -1202,10 +1231,10 @@ class PaiZongGame {
     const luck = this.getMetaBonuses().eventLuck || 0;
     let chance = 0.42 + luck * 0.1;
     if (this.run.isEndless) chance += 0.08;
-    if (Math.random() > chance) return null;
+    if (this.random() > chance) return null;
     const pool = typeof STAGE_EVENTS !== 'undefined' ? STAGE_EVENTS : [];
     if (!pool.length) return null;
-    return pool[Math.floor(Math.random() * pool.length)];
+    return pool[Math.floor(this.random() * pool.length)];
   }
 
   /** 应用奇遇选项 */
@@ -1235,14 +1264,14 @@ class PaiZongGame {
     }
     if (a.jinnang) {
       for (let i = 0; i < a.jinnang; i++) {
-        const jn = JINNANG_POOL[Math.floor(Math.random() * JINNANG_POOL.length)];
+        const jn = JINNANG_POOL[Math.floor(this.random() * JINNANG_POOL.length)];
         this.run.jinnang.push({ ...jn, uid: uid() });
       }
     }
     if (a.randomCursed) {
       const cursed = QIPAI_POOL.filter(q => q.rarity === 'cursed' && !this.run.qipai.some(x => x.id === q.id));
       if (cursed.length) {
-        const q = cursed[Math.floor(Math.random() * cursed.length)];
+        const q = cursed[Math.floor(this.random() * cursed.length)];
         this.run.qipai.push(q);
         this.markSeenQipai([q]);
       }
@@ -1250,7 +1279,7 @@ class PaiZongGame {
     if (a.randomCommon) {
       const commons = QIPAI_POOL.filter(q => q.rarity === 'common' && !this.run.qipai.some(x => x.id === q.id));
       if (commons.length) {
-        const q = commons[Math.floor(Math.random() * commons.length)];
+        const q = commons[Math.floor(this.random() * commons.length)];
         this.run.qipai.push(q);
         this.markSeenQipai([q]);
       }
@@ -1353,13 +1382,51 @@ class PaiZongGame {
   /**
    * 当前是否有可出的合法牌
    */
-  countLegalPlays() {
+  invalidateLegalPlayCache() {
+    this._legalPlayCache = { battle: null, key: '', plays: [] };
+  }
+
+  getLegalPlayCacheKey() {
     const b = this.battle;
-    if (!b || b.status !== 'playing') return 0;
+    if (!b) return '';
+    const hand = (b.playerHand || [])
+      .map(c => `${c.id}:${c._frozen ? 1 : 0}`)
+      .join(',');
+    const last = b.lastHand
+      ? `${b.lastHand.type}:${b.lastHand.maxOrder}:${b.lastHand.cards?.map(c => c.id).join(',') || ''}`
+      : '';
+    const wild = [b.baibianActive, b.yirongActive]
+      .map(x => x ? `${x.cardId}:${x.rankId}` : '')
+      .join(',');
+    return [
+      b.status,
+      b.turn,
+      b.freePlay ? 1 : 0,
+      b.lastPlayer || '',
+      hand,
+      last,
+      wild,
+    ].join('|');
+  }
+
+  getLegalPlays() {
+    const b = this.battle;
+    if (!b || b.status !== 'playing') return [];
+    const key = this.getLegalPlayCacheKey();
+    if (this._legalPlayCache?.battle === b && this._legalPlayCache.key === key) {
+      return this._legalPlayCache.plays;
+    }
+
     const free = b.freePlay || !b.lastHand || b.lastPlayer !== 'enemy';
     const last = free ? null : b.lastHand;
     const hand = b.playerHand.filter(c => !c._frozen);
-    return enumeratePlays(hand, last, this.getWildOpts()).length;
+    const plays = enumeratePlays(hand, last, this.getWildOpts());
+    this._legalPlayCache = { battle: b, key, plays };
+    return plays;
+  }
+
+  countLegalPlays() {
+    return this.getLegalPlays().length;
   }
 
   /**
@@ -1587,10 +1654,9 @@ class PaiZongGame {
     const b = this.battle;
     const handCards = b.playerHand.filter(c => !c._frozen);
     const free = b.freePlay || !b.lastHand || b.lastPlayer !== 'enemy';
-    const last = free ? null : b.lastHand;
     const opts = this.getWildOpts();
 
-    let plays = enumeratePlays(handCards, last, opts).filter(p => p.cards.some(c => c.id === cardId));
+    let plays = this.getLegalPlays().filter(p => p.cards.some(c => c.id === cardId));
     if (!plays.length && free) {
       const one = handCards.find(c => c.id === cardId);
       if (one) {
@@ -1937,7 +2003,7 @@ class PaiZongGame {
     if (result.breakdown.some(x => x.label === '天命花色')) {
       b.tianmingTriggerCount++;
       if (b.tianmingTriggerCount === 1 && this.hasQipai('mingdeng')) {
-        const jn = JINNANG_POOL[Math.floor(Math.random() * JINNANG_POOL.length)];
+        const jn = JINNANG_POOL[Math.floor(this.random() * JINNANG_POOL.length)];
         this.run.jinnang.push({ ...jn, uid: uid() });
         this.log(`【明灯】锦囊：${jn.name}`);
       }
@@ -1992,7 +2058,7 @@ class PaiZongGame {
     if (b.flushCount >= 8) this.grantAchievement('flush_legend');
 
     if (this.hasQipai('pozhu') && b.playerChain >= 3) {
-      const jg = JIGUAN_POOL[Math.floor(Math.random() * JIGUAN_POOL.length)];
+      const jg = JIGUAN_POOL[Math.floor(this.random() * JIGUAN_POOL.length)];
       b.jiguanHand.push({ ...jg, uid: uid() });
       this.log('【破竹】机关：' + jg.name);
       b.playerChain = 0;
@@ -2020,6 +2086,15 @@ class PaiZongGame {
       const refill = this.drawCardsToHand(8, 'empty');
       if (!refill.ok) {
         const lose = this.onLose('手牌耗尽，未达门槛');
+        if (lose.revived) {
+          return {
+            ok: true,
+            revived: true,
+            score: result.score,
+            breakdown: result.breakdown,
+            hand,
+          };
+        }
         return {
           ok: true,
           lost: true,
@@ -2113,8 +2188,8 @@ class PaiZongGame {
     const cap = b.xinmoCap || 5;
     if (b.xinmo >= cap) {
       b.xinmo = 0;
-      if (Math.random() < 0.5 && b.playerHand.length) {
-        b.playerHand[Math.floor(Math.random() * b.playerHand.length)]._frozen = true;
+      if (this.random() < 0.5 && b.playerHand.length) {
+        b.playerHand[Math.floor(this.random() * b.playerHand.length)]._frozen = true;
         this.log('心魔爆发！冻结1张牌');
       } else {
         b.threshold = Math.floor(b.threshold * 1.08);
@@ -2188,6 +2263,7 @@ class PaiZongGame {
       enemyFlatBonus: b.boss?.enemyCounter || 0,
       stageType: b.stageType,
       bossId: b.boss?.id || this.run.character?.id || null,
+      rng: this.random.bind(this),
       _aiDebug: aiDebug,
     };
 
@@ -2264,6 +2340,9 @@ class PaiZongGame {
         }
       } else {
         const lose = this.onLose('守关者先破境');
+        if (lose.revived) {
+          return { action: 'play', hand: play, score: enemyGain, revived: true };
+        }
         return { action: 'play', hand: play, score: enemyGain, lost: true, reason: lose.reason, yueli: lose.yueli };
       }
     }
@@ -2284,6 +2363,8 @@ class PaiZongGame {
 
     b.turn = 'player';
     b.turnJiguanUsed = 0;
+    b.jiguanTurnLimit = b.maxJiguanPerTurn || 1;
+    b.extraJiguanTurn = false;
     b.round++;
     this.tickRoundEffects();
     if (b.status === 'lost') {
@@ -2319,6 +2400,8 @@ class PaiZongGame {
     }
     b.turn = 'player';
     b.turnJiguanUsed = 0;
+    b.jiguanTurnLimit = b.maxJiguanPerTurn || 1;
+    b.extraJiguanTurn = false;
     b.round++;
     this.tickRoundEffects();
     this.refreshBattleDynamics();
@@ -2335,7 +2418,7 @@ class PaiZongGame {
       }
     }
     if (b.boss?.tianmingRotate && b.round % b.boss.tianmingRotate === 0) {
-      b.tianmingSuit = randomTianmingSuit();
+      b.tianmingSuit = randomTianmingSuit(this.random.bind(this));
       b.tianmingSuits = [b.tianmingSuit];
       b.tianmingHidden = false;
       this.log(`天命变为 ${SUITS.find(s => s.id === b.tianmingSuit)?.symbol}`);
@@ -2391,7 +2474,7 @@ class PaiZongGame {
   useJiguan(jiguanUid, extra = {}) {
     const b = this.battle;
     if (b.status !== 'playing' || b.turn !== 'player') return { ok: false, reason: '不是你的回合' };
-    const maxJ = b.extraJiguanTurn ? 2 : b.maxJiguanPerTurn;
+    const maxJ = b.jiguanTurnLimit || (b.extraJiguanTurn ? 2 : (b.maxJiguanPerTurn || 1));
     if (b.turnJiguanUsed >= maxJ) return { ok: false, reason: '本回合机关已用完' };
 
     const idx = b.jiguanHand.findIndex(j => j.uid === jiguanUid);
@@ -2496,7 +2579,7 @@ class PaiZongGame {
       }
       case 'steal_card':
         if (b.enemyHand.length) {
-          const i = Math.floor(Math.random() * b.enemyHand.length);
+          const i = Math.floor(this.random() * b.enemyHand.length);
           const c = b.enemyHand.splice(i, 1)[0];
           b.playerHand = sortCards([...b.playerHand, c]);
           this.log(`【偷梁】获得 ${c.suitSymbol || ''}${c.label}`);
@@ -2546,10 +2629,8 @@ class PaiZongGame {
     b.turnJiguanUsed++;
     b.jiguanUsedCount++;
     b.jiguanUsedTotal++;
-    b.extraJiguanTurn = false;
-
     let passiveNote = '';
-    if (this.run.character.passive?.type === 'jiguan_save' && Math.random() < this.run.character.passive.chance) {
+    if (this.run.character.passive?.type === 'jiguan_save' && this.random() < this.run.character.passive.chance) {
       consumed = false;
       b.nextPlayQi += 0.3;
       this.log('【百宝囊】未消耗');
@@ -2564,7 +2645,7 @@ class PaiZongGame {
     if (this.run.character.passive?.type === 'jiguan_master') {
       const every = this.run.character.passive.every || 3;
       if (b.jiguanUsedTotal % every === 0) {
-        const j = JIGUAN_POOL[Math.floor(Math.random() * JIGUAN_POOL.length)];
+        const j = JIGUAN_POOL[Math.floor(this.random() * JIGUAN_POOL.length)];
         b.jiguanHand.push({ ...j, uid: uid() });
         this.log('【七窍】获得机关 ' + j.name);
         masterNote = `七窍：获得【${j.name}】`;
@@ -2631,6 +2712,7 @@ class PaiZongGame {
         break;
       }
       case 'jiehuo':
+        b.jiguanTurnLimit = (b.jiguanTurnLimit || b.maxJiguanPerTurn || 1) + 1;
         b.extraJiguanTurn = true;
         this.log('【借火令】');
         effectMsg = '本回合可额外使用 1 次机关';
@@ -2639,7 +2721,7 @@ class PaiZongGame {
         break;
       case 'kuitian':
         if (b.enemyHand.length) {
-          const c = b.enemyHand[Math.floor(Math.random() * b.enemyHand.length)];
+          const c = b.enemyHand[Math.floor(this.random() * b.enemyHand.length)];
           this.log(`【窥天镜】${c.suitSymbol}${c.label}`);
           effectMsg = `窥见守关者【${c.suitSymbol}${c.label}】`;
           detail = '仅知其一，不知其余';
@@ -2950,7 +3032,7 @@ class PaiZongGame {
     const max = this.getUnlockedPoolMax();
     let pool = QIPAI_POOL.filter(q => (q.unlock || 0) <= max && !ban.has(q.id));
     if (pool.length < count) pool = QIPAI_POOL.filter(q => !ban.has(q.id));
-    return pickQipaiChoicesFromPool(pool.length ? pool : QIPAI_POOL, owned, count, preferCursed);
+    return pickQipaiChoicesFromPool(pool.length ? pool : QIPAI_POOL, owned, count, preferCursed, this.random.bind(this));
   }
 
   advanceAfterWin() {
@@ -3039,7 +3121,7 @@ class PaiZongGame {
     const cost = this.metaShopCost(20);
     if (this.run.dunwu < cost) return { ok: false, reason: '顿悟不足' };
     this.run.dunwu -= cost;
-    const jn = JINNANG_POOL[Math.floor(Math.random() * JINNANG_POOL.length)];
+    const jn = JINNANG_POOL[Math.floor(this.random() * JINNANG_POOL.length)];
     this.run.jinnang.push({ ...jn, uid: uid() });
     return { ok: true, jinnang: jn, cost };
   }

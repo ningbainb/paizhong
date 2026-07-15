@@ -6,16 +6,20 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function shuffle(arr) {
+function randomValue(rng) {
+  return typeof rng === 'function' ? rng() : Math.random();
+}
+
+function shuffle(arr, rng = Math.random) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(randomValue(rng) * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
-function createDeck() {
+function createDeck(rng = Math.random) {
   const deck = [];
   for (const suit of SUITS) {
     for (const rank of RANKS) {
@@ -41,7 +45,7 @@ function createDeck() {
     id: uid(), rank: 'RJ', label: '大王', order: 17, li: 30,
     suit: 'joker', suitSymbol: '🃏', color: 'red', joker: true, jokerType: 'red',
   });
-  return shuffle(deck);
+  return shuffle(deck, rng);
 }
 
 function sortCards(cards) {
@@ -708,7 +712,7 @@ function calculateScore(hand, ctx) {
   return { score, li, qi: finalQi, rawQi: qi, zongshi, breakdown, isFlush: flush };
 }
 
-function pickQipaiChoicesFromPool(pool, ownedIds, count, preferCursed = false) {
+function pickQipaiChoicesFromPool(pool, ownedIds, count, preferCursed = false, rng = Math.random) {
   let avail = pool.filter(q => !ownedIds.includes(q.id));
   if (avail.length < count) avail = pool.slice();
   const weighted = [];
@@ -720,7 +724,7 @@ function pickQipaiChoicesFromPool(pool, ownedIds, count, preferCursed = false) {
   const used = new Set();
   let guard = 0;
   while (result.length < count && weighted.length && guard++ < 500) {
-    const q = weighted[Math.floor(Math.random() * weighted.length)];
+    const q = weighted[Math.floor(randomValue(rng) * weighted.length)];
     if (!used.has(q.id)) { used.add(q.id); result.push(q); }
   }
   return result;
@@ -899,7 +903,7 @@ function aiAlgoRush(plays, handCards, ctx, board) {
     }
     if (gain >= board.needEnemy * 0.5) s += 30;
     if (gain >= board.needEnemy * 0.8) s += 50;
-    s += (Math.random() - 0.5) * 3;
+    s += (randomValue(ctx.rng) - 0.5) * 3;
     return s - aiAttachmentConservationCost(handCards, play);
   });
 }
@@ -919,7 +923,7 @@ function aiAlgoControl(plays, handCards, ctx, board) {
       if (play.type === 'straight' || play.type === 'airplane') s += 10;
       s += aiRemainingStructure(handCards, play) * 1.2;
       if (board.playerDanger && !bomb) s += play.maxOrder * 1.5;
-      return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2;
+      return s - aiAttachmentConservationCost(handCards, play) + (randomValue(ctx.rng) - 0.5) * 2;
     });
   }
   // 跟牌：优先打断；巧压；必要时炸
@@ -940,7 +944,7 @@ function aiAlgoControl(plays, handCards, ctx, board) {
     // 压完后仍有大牌更好
     s += aiRemainingStructure(handCards, play) * 0.9;
     s += play.maxOrder * 0.8; // 抬高压制线
-    return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2;
+      return s - aiAttachmentConservationCost(handCards, play) + (randomValue(ctx.rng) - 0.5) * 2;
   });
 }
 
@@ -959,7 +963,7 @@ function aiAlgoEconomize(plays, handCards, ctx, board) {
       s += aiRemainingStructure(handCards, play) * 1.4;
       // 仍要推进
       if (board.enemyNearWin) s += gain * 1.2;
-      return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2;
+    return s - aiAttachmentConservationCost(handCards, play) + (randomValue(ctx.rng) - 0.5) * 2;
     });
   }
   // 最小阶差合法压
@@ -974,7 +978,7 @@ function aiAlgoEconomize(plays, handCards, ctx, board) {
     }
     if (gap >= 1 && gap <= 2) s += 15;
     if (board.chain >= 2 && !bomb) s += 10;
-    return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 1.5;
+    return s - aiAttachmentConservationCost(handCards, play) + (randomValue(ctx.rng) - 0.5) * 1.5;
   });
 }
 
@@ -999,7 +1003,7 @@ function aiAlgoTempo(plays, handCards, ctx, board) {
     }
     if (board.handCount <= 8) s += 15;
     if (board.enemyNearWin) s += gain * 0.8;
-    return s - aiAttachmentConservationCost(handCards, play) + (Math.random() - 0.5) * 2.5;
+    return s - aiAttachmentConservationCost(handCards, play) + (randomValue(ctx.rng) - 0.5) * 2.5;
   });
 }
 
@@ -1047,7 +1051,7 @@ function aiAlgoHybrid(plays, handCards, ctx, board) {
     if (board.strategy === 'aggressive') s += gain * 0.2 + 6;
     if (board.strategy === 'finish') s += gain * 0.5 + 18;
     if (board.strategy === 'block' && !board.freePlay) s += 14;
-    s += (Math.random() - 0.5) * (board.diff === 'legend' ? 1.5 : 4);
+    s += (randomValue(ctx.rng) - 0.5) * (board.diff === 'legend' ? 1.5 : 4);
     return s - aiAttachmentConservationCost(handCards, play);
   });
 }
@@ -1090,9 +1094,9 @@ function aiSelectAlgorithms(ctx, board) {
     pool = ['rush', 'control', 'economize', 'tempo', 'hybrid'];
   } else {
     // 常道：主算法 + 20% 换一套增加变化
-    if (Math.random() < 0.22) {
+    if (randomValue(ctx.rng) < 0.22) {
       const all = Object.keys(AI_ALGORITHMS);
-      pool = [all[Math.floor(Math.random() * all.length)]];
+      pool = [all[Math.floor(randomValue(ctx.rng) * all.length)]];
     } else {
       pool = [pool[0] || 'hybrid'];
     }
@@ -1349,15 +1353,15 @@ function aiMonteCarloRefine(candidates, handCards, ctx, board, samples) {
     for (let i = 0; i < samples; i++) {
       let e = gain;
       // 随机玩家跟牌能力
-      const beat = Math.random() < aiPlayerBeatProb(play, board);
+      const beat = randomValue(ctx.rng) < aiPlayerBeatProb(play, board);
       if (!beat && left.length) {
         // 再自由一手期望
         const np = enumeratePlays(left, null);
         if (np.length) {
-          const top = np[Math.floor(Math.random() * Math.min(5, np.length))];
+          const top = np[Math.floor(randomValue(ctx.rng) * Math.min(5, np.length))];
           // 偏高收益采样
           const sorted = np.slice().sort((a, b) => aiEstimateScore(b, ctx) - aiEstimateScore(a, ctx));
-          const pick = sorted[Math.floor(Math.random() * Math.min(4, sorted.length))];
+          const pick = sorted[Math.floor(randomValue(ctx.rng) * Math.min(4, sorted.length))];
           e += aiEstimateScore(pick, ctx) * 0.9;
         }
         e += 15;
@@ -1395,7 +1399,7 @@ function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
   // 确定性收官
   const finish = aiPickFinish(plays, ctx, board);
   if (finish && aiEstimateScore(finish, ctx) >= board.needEnemy) {
-    if (board.diff !== 'normal' || board.enemyNearWin || board.strategy === 'finish' || Math.random() < 0.85) {
+    if (board.diff !== 'normal' || board.enemyNearWin || board.strategy === 'finish' || randomValue(ctx.rng) < 0.85) {
       if (ctx._aiDebug) ctx._aiDebug.algo = '收官';
       return finish;
     }
@@ -1437,7 +1441,7 @@ function aiChoosePlay(handCards, lastHand, strategyOrCtx = 'normal') {
     if (!hasNonBomb && !board.playerDanger && !board.playerNear && !board.lateGame
       && board.strategy !== 'aggressive' && board.strategy !== 'finish') {
       const passChance = board.diff === 'legend' ? 0.02 : board.diff === 'master' ? 0.05 : board.diff === 'hard' ? 0.1 : 0.18;
-      if (Math.random() < passChance) return null;
+      if (randomValue(ctx.rng) < passChance) return null;
     }
   }
 
@@ -1534,11 +1538,11 @@ function drawCards(deck, n) {
   return drawn;
 }
 
-function randomTianmingSuit() {
-  return SUITS[Math.floor(Math.random() * SUITS.length)].id;
+function randomTianmingSuit(rng = Math.random) {
+  return SUITS[Math.floor(randomValue(rng) * SUITS.length)].id;
 }
 
-function pickQipaiChoices(ownedIds, count, preferCursed = false, unlockedMax = 9999) {
+function pickQipaiChoices(ownedIds, count, preferCursed = false, unlockedMax = 9999, rng = Math.random) {
   const pool = QIPAI_POOL.filter(q => (q.unlock || 0) <= unlockedMax);
-  return pickQipaiChoicesFromPool(pool.length ? pool : QIPAI_POOL, ownedIds, count, preferCursed);
+  return pickQipaiChoicesFromPool(pool.length ? pool : QIPAI_POOL, ownedIds, count, preferCursed, rng);
 }
