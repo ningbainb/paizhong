@@ -1624,6 +1624,42 @@ kbd {
   font-size: 11px;
   color: var(--muted);
 }
+.puzzle-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.puzzle-tab {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+.puzzle-tab:hover {
+  border-color: rgba(212, 175, 55, 0.35);
+  color: var(--text);
+}
+.puzzle-tab.is-on {
+  color: var(--gold-light);
+  border-color: rgba(212, 175, 55, 0.45);
+  background: rgba(212, 175, 55, 0.12);
+}
+.puzzle-card.is-locked {
+  opacity: 0.62;
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+}
+.puzzle-card.is-locked:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.08);
+}
 
 .achieve-grid {
   display: grid;

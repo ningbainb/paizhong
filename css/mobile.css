@@ -43,6 +43,15 @@ body {
     min-height: 48px;
     padding: 14px;
   }
+  .puzzle-tabs {
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .puzzle-tab {
+    min-height: 34px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
   #screen-title .title-modes {
     grid-template-columns: 1fr 1fr !important;
   }

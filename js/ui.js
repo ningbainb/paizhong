@@ -516,46 +516,99 @@ const UI = {
   },
 
   // ===== 残局论道 =====
-  renderPuzzleSelect() {
+  renderPuzzleSelect(packFilter = null) {
     const grid = this.$('puzzle-grid');
     const summary = this.$('puzzle-summary');
     const desc = this.$('puzzle-desc');
     const pool = typeof PUZZLE_POOL !== 'undefined' ? PUZZLE_POOL : [];
+    const packs = typeof PUZZLE_PACKS !== 'undefined' ? PUZZLE_PACKS : [];
     const cleared = game.puzzleClearedCount();
     const three = game.puzzleThreeStarCount();
-    if (desc) desc.textContent = `已破 ${cleared}/${pool.length} · 三星 ${three} · 固定牌局短局解谜`;
+    const totalStars = typeof getPuzzleTotalStars === 'function'
+      ? getPuzzleTotalStars(game.meta)
+      : 0;
+    if (this._puzzlePackFilter == null) this._puzzlePackFilter = 'all';
+    if (packFilter != null) this._puzzlePackFilter = packFilter;
+    const filter = this._puzzlePackFilter || 'all';
+
+    if (desc) {
+      desc.textContent = `已破 ${cleared}/${pool.length} · 星 ${totalStars} · 三星 ${three} · 高难需通关进度解锁`;
+    }
     if (summary) {
       summary.innerHTML = `
         <div class="puzzle-sum-card"><span>已破</span><strong>${cleared}/${pool.length}</strong></div>
-        <div class="puzzle-sum-card"><span>三星</span><strong>${three}</strong></div>
-        <div class="puzzle-sum-card"><span>规则</span><strong>破境即胜</strong></div>
+        <div class="puzzle-sum-card"><span>累计星</span><strong>${totalStars}</strong></div>
+        <div class="puzzle-sum-card"><span>三星题</span><strong>${three}</strong></div>
       `;
     }
+
+    // 谱册筛选
+    let tabs = this.$('puzzle-tabs');
+    if (!tabs) {
+      const shell = document.querySelector('#screen-puzzle .content-shell');
+      if (shell) {
+        tabs = document.createElement('div');
+        tabs.id = 'puzzle-tabs';
+        tabs.className = 'puzzle-tabs';
+        const head = shell.querySelector('.section-head');
+        if (head && head.nextSibling) shell.insertBefore(tabs, head.nextSibling);
+        else shell.insertBefore(tabs, shell.firstChild);
+      }
+    }
+    if (tabs) {
+      const tabDefs = [{ id: 'all', name: '全部' }, ...packs.map(p => ({ id: p.id, name: p.name }))];
+      tabs.innerHTML = tabDefs.map(t => `
+        <button type="button" class="puzzle-tab${filter === t.id ? ' is-on' : ''}" data-pack="${t.id}">${t.name}</button>
+      `).join('');
+      tabs.querySelectorAll('[data-pack]').forEach(btn => {
+        btn.onclick = () => this.renderPuzzleSelect(btn.getAttribute('data-pack'));
+      });
+    }
+
     if (!grid) return;
     grid.innerHTML = '';
-    pool.forEach((p, idx) => {
+    const list = filter === 'all' ? pool : pool.filter(p => (p.pack || 'intro') === filter);
+    list.forEach((p) => {
+      const idx = pool.indexOf(p);
       const rec = game.getPuzzleRecord(p.id);
       const stars = rec?.stars || 0;
+      const unlocked = typeof isPuzzleUnlocked === 'function'
+        ? isPuzzleUnlocked(p, game.meta, cleared)
+        : true;
       const starStr = '★'.repeat(stars) + '☆'.repeat(Math.max(0, 3 - stars));
       const diffStars = '◆'.repeat(p.star || 1) + '◇'.repeat(Math.max(0, 3 - (p.star || 1)));
+      const packName = packs.find(x => x.id === p.pack)?.name || '';
       const card = document.createElement('button');
       card.type = 'button';
-      card.className = 'puzzle-card' + (stars > 0 ? ' is-cleared' : '') + (stars >= 3 ? ' is-perfect' : '');
+      card.className = 'puzzle-card'
+        + (stars > 0 ? ' is-cleared' : '')
+        + (stars >= 3 ? ' is-perfect' : '')
+        + (!unlocked ? ' is-locked' : '');
+      card.disabled = !unlocked;
+      const lockTip = !unlocked
+        ? [
+            (p.unlockClears ? `通关 ${p.unlockClears} 题` : ''),
+            (p.unlockStars ? `累计 ${p.unlockStars} 星` : ''),
+          ].filter(Boolean).join(' · ')
+        : '';
       card.innerHTML = `
         <div class="puzzle-card-top">
-          <span class="puzzle-idx">${String(idx + 1).padStart(2, '0')}</span>
+          <span class="puzzle-idx">${String(idx + 1).padStart(2, '0')}${packName ? ` · ${packName}` : ''}</span>
           <span class="puzzle-diff" title="难度">${diffStars}</span>
         </div>
-        <h4>${p.name}</h4>
-        <p>${p.desc}</p>
+        <h4>${unlocked ? p.name : '？？？'}</h4>
+        <p>${unlocked ? p.desc : `未解锁 · 需 ${lockTip || '更多进度'}`}</p>
         <div class="puzzle-card-foot">
-          <span class="puzzle-stars" title="最佳评价">${starStr}</span>
-          <span class="puzzle-meta">${stars
-            ? `最佳 ${rec.bestRounds || '—'} 回 · 通关 ${rec.clears || 1} 次`
-            : `首通阅历 +${p.yueliFirst || 20}`}</span>
+          <span class="puzzle-stars" title="最佳评价">${unlocked ? starStr : '锁定'}</span>
+          <span class="puzzle-meta">${!unlocked
+            ? lockTip
+            : (stars
+              ? `最佳 ${rec.bestRounds || '—'} 回 · 通关 ${rec.clears || 1} 次`
+              : `首通阅历 +${p.yueliFirst || 20}`)}</span>
         </div>
       `;
-      card.onclick = () => this.startPuzzle(p.id);
+      if (unlocked) card.onclick = () => this.startPuzzle(p.id);
+      else card.onclick = () => this.toast(`未解锁：需 ${lockTip}`);
       grid.appendChild(card);
     });
     this.showScreen('puzzle');

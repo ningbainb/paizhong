@@ -668,8 +668,11 @@ class PaiZongGame {
     tryA('all_chars', CHARACTERS.every(c => (this.meta.charWins[c.id] || 0) > 0));
     tryA('puzzle1', this.puzzleClearedCount() >= 1);
     tryA('puzzle5', this.puzzleClearedCount() >= 5);
+    tryA('puzzle10', this.puzzleClearedCount() >= 10);
+    tryA('puzzle15', this.puzzleClearedCount() >= 15);
     tryA('puzzle_all', typeof PUZZLE_POOL !== 'undefined' && this.puzzleClearedCount() >= PUZZLE_POOL.length);
     tryA('puzzle_master', this.puzzleThreeStarCount() >= 3);
+    tryA('puzzle_master10', this.puzzleThreeStarCount() >= 10);
     const be = this.meta.bestEndless || 0;
     tryA('endless10', be >= 10);
     tryA('endless20', be >= 20);
@@ -750,6 +753,15 @@ class PaiZongGame {
     if (!p) return { ok: false, reason: '残局不存在' };
     if (typeof createCardsFromCodes !== 'function') {
       return { ok: false, reason: '引擎未就绪' };
+    }
+    if (typeof isPuzzleUnlocked === 'function'
+      && !isPuzzleUnlocked(p, this.meta, this.puzzleClearedCount())) {
+      const needC = p.unlockClears || 0;
+      const needS = p.unlockStars || 0;
+      const parts = [];
+      if (needC) parts.push(`通关 ${needC} 题`);
+      if (needS) parts.push(`累计 ${needS} 星`);
+      return { ok: false, reason: `未解锁（需${parts.join(' · ') || '更多进度'}）` };
     }
 
     const char = (typeof CHARACTERS !== 'undefined' ? CHARACTERS : [])
@@ -3264,10 +3276,13 @@ class PaiZongGame {
 
     this.grantAchievement('puzzle1');
     if (this.puzzleClearedCount() >= 5) this.grantAchievement('puzzle5');
+    if (this.puzzleClearedCount() >= 10) this.grantAchievement('puzzle10');
+    if (this.puzzleClearedCount() >= 15) this.grantAchievement('puzzle15');
     if (typeof PUZZLE_POOL !== 'undefined' && this.puzzleClearedCount() >= PUZZLE_POOL.length) {
       this.grantAchievement('puzzle_all');
     }
     if (this.puzzleThreeStarCount() >= 3) this.grantAchievement('puzzle_master');
+    if (this.puzzleThreeStarCount() >= 10) this.grantAchievement('puzzle_master10');
 
     this.log(`残局破境！${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} · ${rounds} 回合 · 阅历+${yueliGain}`);
     this.save();
